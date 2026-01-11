@@ -1,8 +1,12 @@
 /**
- * Tool Loader - Auto-discovers and loads AI tools from the filesystem
+ * Tool Loader - Loads AI tools based on configuration
+ *
+ * Tools are loaded from the filesystem but only if they're listed in config.
+ * Access control is applied per-tool based on config.accessGroups.
  */
 
 import { Glob } from 'bun';
+import type { BotConfig, FeatureAccess, ToolsConfig } from './config';
 import type { Logger, Tool } from './types';
 
 export interface ToolLoaderOptions {
@@ -10,6 +14,15 @@ export interface ToolLoaderOptions {
   toolsDir: string;
   /** Logger */
   logger: Logger;
+  /** Bot configuration (for filtering which tools to load) */
+  config?: BotConfig;
+}
+
+export interface LoadedTools {
+  /** All loaded tools */
+  all: Tool[];
+  /** Map of tool name to its access config */
+  accessConfig: Map<string, FeatureAccess>;
 }
 
 /**
@@ -30,14 +43,21 @@ function isTool(obj: unknown): obj is Tool {
 }
 
 /**
- * Load all tools from the tools directory
+ * Load tools based on configuration
  *
- * Discovers files matching *.tool.ts pattern and instantiates Tool classes.
- * Tools with a validate() method that returns false are skipped (e.g., missing API keys).
+ * If config.tools is defined, only tools listed there are loaded.
+ * If config.tools is undefined, all discovered tools are loaded (legacy behavior).
  */
-export async function loadTools(options: ToolLoaderOptions): Promise<Tool[]> {
-  const { toolsDir, logger } = options;
-  const tools: Tool[] = [];
+export async function loadTools(options: ToolLoaderOptions): Promise<LoadedTools> {
+  const { toolsDir, logger, config } = options;
+
+  const result: LoadedTools = {
+    all: [],
+    accessConfig: new Map(),
+  };
+
+  // Get list of tools to load from config (undefined = load all)
+  const toolsToLoad: ToolsConfig | undefined = config?.tools;
 
   // Find all tool files
   const glob = new Glob('**/*.tool.ts');
@@ -49,7 +69,7 @@ export async function loadTools(options: ToolLoaderOptions): Promise<Tool[]> {
 
   if (files.length === 0) {
     logger.debug('No tool files found', { toolsDir });
-    return tools;
+    return result;
   }
 
   logger.debug(`Found ${files.length} tool file(s)`, { files });
@@ -73,18 +93,31 @@ export async function loadTools(options: ToolLoaderOptions): Promise<Tool[]> {
 
           if (!isTool(instance)) continue;
 
+          const toolName = instance.metadata.name;
+
+          // Check if this tool should be loaded based on config
+          if (toolsToLoad !== undefined) {
+            const accessConfig = toolsToLoad[toolName];
+            if (accessConfig === undefined) {
+              logger.debug(`Skipping tool ${toolName} - not in config`);
+              continue;
+            }
+            // Store access config for later use
+            result.accessConfig.set(toolName, accessConfig);
+          }
+
           // Check if tool has validation and if it passes
           if (typeof instance.validate === 'function' && !instance.validate()) {
-            logger.warn(`Tool ${instance.metadata.name} validation failed - skipping`, {
-              tool: instance.metadata.name,
-              hint: 'Check required environment variables',
+            logger.warn(`Tool ${toolName} validation failed - skipping`, {
+              tool: toolName,
+              hint: 'Check required environment variables or API keys',
             });
             continue;
           }
 
-          tools.push(instance);
-          logger.debug(`Loaded tool: ${instance.metadata.name}`, {
-            tool: instance.metadata.name,
+          result.all.push(instance);
+          logger.debug(`Loaded tool: ${toolName}`, {
+            tool: toolName,
             category: instance.metadata.category,
           });
         } catch (_err) {
@@ -98,7 +131,7 @@ export async function loadTools(options: ToolLoaderOptions): Promise<Tool[]> {
     }
   }
 
-  return tools;
+  return result;
 }
 
 /**

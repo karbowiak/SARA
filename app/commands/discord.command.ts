@@ -80,9 +80,9 @@ export default class DiscordCommand extends Command {
     // Create plugin context
     const context: PluginContext = { eventBus, logger };
 
-    // Auto-load plugins from app/plugins
+    // Load plugins from app/plugins (filtered by config.plugins)
     const pluginsDir = path.join(import.meta.dir, '../plugins');
-    const plugins = await loadPlugins({ pluginsDir, context, logger });
+    const plugins = await loadPlugins({ pluginsDir, context, logger, config });
 
     // Sort message handlers by priority (higher first)
     const sortedMessageHandlers = [...plugins.message].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));

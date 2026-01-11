@@ -21,6 +21,8 @@ export interface BotUser {
   displayName?: string;
   isBot: boolean;
   avatarUrl?: string;
+  /** Platform-specific role IDs (Discord roles, Slack groups, etc.) */
+  roleIds?: string[];
 }
 
 /**

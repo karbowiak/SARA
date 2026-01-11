@@ -6,13 +6,16 @@
  */
 
 import {
+  type AccessContext,
   type BotConfig,
   type BotMessage,
   buildSystemPrompt,
   type ChatMessage,
   createOpenRouterClient,
+  getAccessibleTools,
   getBotConfig,
   LLMClient,
+  type LoadedTools,
   loadTools,
   type MessageHandlerPlugin,
   type PluginContext,
@@ -20,7 +23,6 @@ import {
   type ToolCall,
   type ToolExecutionContext,
 } from '@core';
-import path from 'path';
 import {
   formatMemoriesForPrompt,
   getMemoriesForPrompt,
@@ -28,7 +30,8 @@ import {
   getUserByPlatformId,
   type SimilarMessage,
   searchSimilar,
-} from '../../../core/database';
+} from '@core/database';
+import path from 'path';
 import { embed, isEmbedderReady } from '../../../core/embedder';
 
 /** Fallback model if not configured */
@@ -49,7 +52,7 @@ export class AIPlugin implements MessageHandlerPlugin {
   // Only respond when mentioned (default behavior)
 
   private context?: PluginContext;
-  private tools: Tool[] = [];
+  private loadedTools: LoadedTools = { all: [], accessConfig: new Map() };
   private llm?: LLMClient;
   private config?: BotConfig;
   private model: string = FALLBACK_MODEL;
@@ -78,25 +81,25 @@ export class AIPlugin implements MessageHandlerPlugin {
       },
     });
 
-    // Auto-discover and load tools from the tools directory
+    // Load tools from the tools directory (filtered by config)
     const toolsDir = path.join(import.meta.dir, 'tools');
-    const discoveredTools = await loadTools({ toolsDir, logger: context.logger });
-
-    for (const tool of discoveredTools) {
-      this.registerTool(tool);
-    }
+    this.loadedTools = await loadTools({
+      toolsDir,
+      logger: context.logger,
+      config: this.config,
+    });
 
     context.logger.info('AIPlugin loaded', {
       model: this.model,
       botName: this.config.bot.name,
-      tools: this.tools.map((t) => t.metadata.name),
+      tools: this.loadedTools.all.map((t) => t.metadata.name),
     });
   }
 
   async unload(): Promise<void> {
     this.context?.logger.info('AIPlugin unloaded');
     this.context = undefined;
-    this.tools = [];
+    this.loadedTools = { all: [], accessConfig: new Map() };
     this.llm = undefined;
     this.config = undefined;
   }
@@ -141,11 +144,14 @@ export class AIPlugin implements MessageHandlerPlugin {
     });
 
     try {
+      // Get tools accessible to this user
+      const accessibleTools = this.getToolsForUser(message);
+
       // Build messages for the API (includes history)
-      const messages = await this.buildMessages(message, context);
+      const messages = await this.buildMessages(message, accessibleTools, context);
 
       // Get available tools
-      const toolDefinitions = this.tools.length > 0 ? LLMClient.toolsToDefinitions(this.tools) : undefined;
+      const toolDefinitions = accessibleTools.length > 0 ? LLMClient.toolsToDefinitions(accessibleTools) : undefined;
 
       context.logger.debug('Calling LLM', {
         messageCount: messages.length,
@@ -171,7 +177,13 @@ export class AIPlugin implements MessageHandlerPlugin {
 
       // Handle tool calls if present
       if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
-        const result = await this.handleToolCalls(message, choice.message.tool_calls, messages, context);
+        const result = await this.handleToolCalls(
+          message,
+          choice.message.tool_calls,
+          messages,
+          accessibleTools,
+          context,
+        );
         toolsUsed.push(...result.toolsUsed);
 
         // Emit response event
@@ -236,13 +248,35 @@ export class AIPlugin implements MessageHandlerPlugin {
   }
 
   /**
+   * Get tools accessible to the user based on their roles
+   */
+  private getToolsForUser(message: BotMessage): Tool[] {
+    const config = this.config ?? getBotConfig();
+
+    // If no access control configured, return all loaded tools
+    if (!config.accessGroups || !config.tools) {
+      return this.loadedTools.all;
+    }
+
+    // Build access context from message
+    const accessContext: AccessContext = {
+      platform: message.platform,
+      roleIds: message.author.roleIds,
+      userId: message.author.id,
+    };
+
+    // Filter tools by access
+    return getAccessibleTools(config, this.loadedTools.all, accessContext);
+  }
+
+  /**
    * Build chat messages from the incoming message
    * Includes:
    * 1. System prompt with config, memories, and semantic search results
    * 2. Recent channel history (last 20 messages)
    * 3. Current user message
    */
-  private async buildMessages(message: BotMessage, context: PluginContext): Promise<ChatMessage[]> {
+  private async buildMessages(message: BotMessage, tools: Tool[], context: PluginContext): Promise<ChatMessage[]> {
     const config = this.config ?? getBotConfig();
     const additionalContextParts: string[] = [];
 
@@ -310,7 +344,7 @@ export class AIPlugin implements MessageHandlerPlugin {
     // Build system prompt with all context
     const systemPrompt = buildSystemPrompt(config, {
       platform: message.platform,
-      tools: this.tools.length > 0 ? this.tools : undefined,
+      tools: tools.length > 0 ? tools : undefined,
       additionalContext: additionalContextParts.length > 0 ? additionalContextParts.join('\n\n') : undefined,
     });
 
@@ -446,6 +480,7 @@ ${lines.join('\n')}`;
     message: BotMessage,
     toolCalls: ToolCall[],
     messages: ChatMessage[],
+    accessibleTools: Tool[],
     context: PluginContext,
   ): Promise<{ toolsUsed: string[]; content: string | null }> {
     if (!this.llm) return { toolsUsed: [], content: null };
@@ -468,7 +503,7 @@ ${lines.join('\n')}`;
     // Execute each tool call
     for (const toolCall of toolCalls) {
       const toolName = toolCall.function.name;
-      const tool = this.tools.find((t) => t.schema.name === toolName);
+      const tool = accessibleTools.find((t) => t.schema.name === toolName);
 
       // Emit tool call event
       let args: Record<string, unknown> = {};
@@ -669,17 +704,9 @@ ${lines.join('\n')}`;
   }
 
   /**
-   * Register a tool for AI to use
-   */
-  registerTool(tool: Tool): void {
-    this.tools.push(tool);
-    this.context?.logger.info(`Registered AI tool: ${tool.metadata.name}`);
-  }
-
-  /**
-   * Get all registered tools
+   * Get all loaded tools
    */
   getTools(): Tool[] {
-    return [...this.tools];
+    return [...this.loadedTools.all];
   }
 }

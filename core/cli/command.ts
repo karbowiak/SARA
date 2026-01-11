@@ -24,25 +24,27 @@ export abstract class Command {
   static allowUnknownOptions: boolean = false;
 
   /**
-   * Parsed signature (cached).
+   * Parsed signature (cached per subclass).
    */
-  private static _parsed?: ParsedSignature;
+  private static _parsedCache = new WeakMap<typeof Command, ParsedSignature>();
 
   /**
-   * Get parsed signature.
+   * Get parsed signature for this specific command class.
    */
-  static getParsed(): ParsedSignature {
-    if (!Command._parsed) {
-      Command._parsed = parseSignature(Command.signature);
+  static getParsed(this: typeof Command): ParsedSignature {
+    let parsed = Command._parsedCache.get(this);
+    if (!parsed) {
+      parsed = parseSignature(this.signature);
+      Command._parsedCache.set(this, parsed);
     }
-    return Command._parsed;
+    return parsed;
   }
 
   /**
    * Get command name from signature.
    */
-  static getName(): string {
-    return Command.getParsed().name;
+  static getName(this: typeof Command): string {
+    return this.getParsed().name;
   }
 
   // Instance properties

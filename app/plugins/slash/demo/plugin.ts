@@ -25,7 +25,7 @@ import { handleModal, handleModalCommand } from './modal';
 import { handleSelect, handleSelectCommand } from './select';
 
 export class DemoCommandPlugin implements CommandHandlerPlugin {
-  readonly id = 'demo-command';
+  readonly id = 'demo';
   readonly type = 'command' as const;
   readonly commands = ['demo'];
 

@@ -275,10 +275,13 @@ export class DiscordAdapter {
     const botId = this.client.user?.id;
     const mentionedBot = botId ? message.mentions.users.has(botId) || message.content.includes(`<@${botId}>`) : false;
 
+    // Get author's role IDs from guild member
+    const authorRoleIds = message.member?.roles.cache.map((r) => r.id);
+
     return {
       id: message.id,
       content: message.content,
-      author: this.transformUser(message.author),
+      author: this.transformUser(message.author, authorRoleIds),
       channel: this.transformChannel(message),
       attachments: message.attachments.map((a) => ({
         id: a.id,
@@ -299,13 +302,14 @@ export class DiscordAdapter {
     };
   }
 
-  private transformUser(user: User): BotUser {
+  private transformUser(user: User, roleIds?: string[]): BotUser {
     return {
       id: user.id,
       name: user.username,
       displayName: user.displayName ?? user.username,
       isBot: user.bot,
       avatarUrl: user.displayAvatarURL(),
+      roleIds,
     };
   }
 

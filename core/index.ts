@@ -18,15 +18,24 @@ export {
 
 // Config
 export {
+  type AccessContext,
+  type AccessGroups,
   type AIBehaviorConfig,
   type BotConfig,
   type BotIdentityConfig,
   buildSimplePrompt,
   buildSystemPrompt,
+  checkAccess,
+  checkSubcommandAccess,
+  type FeatureAccess,
+  getAccessibleTools,
   getBotConfig,
   loadBotConfig,
   type PersonalityConfig,
+  type PlatformAccess,
+  type PluginsConfig,
   type PromptContext,
+  type ToolsConfig,
 } from './config';
 // EventBus
 export { createEventBus, EventBus, type EventBusOptions } from './event-bus';
@@ -54,6 +63,7 @@ export {
 // Tool Loader
 export {
   getToolByName,
+  type LoadedTools,
   loadTools,
   type ToolLoaderOptions,
 } from './tool-loader';

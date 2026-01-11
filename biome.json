@@ -6,7 +6,8 @@
     "rules": {
       "recommended": true,
       "complexity": {
-        "noForEach": "off"
+        "noForEach": "off",
+        "noThisInStatic": "off"
       },
       "style": {
         "noNonNullAssertion": "off",

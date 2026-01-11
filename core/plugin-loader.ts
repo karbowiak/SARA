@@ -1,8 +1,12 @@
 /**
- * Plugin Loader - Auto-discovers and loads plugins from the filesystem
+ * Plugin Loader - Loads plugins based on configuration
+ *
+ * Plugins are loaded from the filesystem but only if they're listed in config.
+ * Access control is applied per-plugin based on config.accessGroups.
  */
 
 import { Glob } from 'bun';
+import type { BotConfig, FeatureAccess, PluginsConfig } from './config';
 import type { BotMessage, Logger, MessageHandlerPlugin, Plugin, PluginContext, TimerHandlerPlugin } from './types';
 import { isMessageHandler, isPlugin, isTimerHandler } from './types';
 
@@ -13,25 +17,36 @@ export interface PluginLoaderOptions {
   context: PluginContext;
   /** Logger */
   logger: Logger;
+  /** Bot configuration (for filtering which plugins to load) */
+  config?: BotConfig;
 }
 
 export interface LoadedPlugins {
   all: Plugin[];
   message: MessageHandlerPlugin[];
   timer: TimerHandlerPlugin[];
+  /** Map of plugin ID to its access config */
+  accessConfig: Map<string, FeatureAccess>;
 }
 
 /**
- * Load all plugins from the plugins directory
+ * Load plugins based on configuration
+ *
+ * If config.plugins is defined, only plugins listed there are loaded.
+ * If config.plugins is undefined, all discovered plugins are loaded (legacy behavior).
  */
 export async function loadPlugins(options: PluginLoaderOptions): Promise<LoadedPlugins> {
-  const { pluginsDir, context, logger } = options;
+  const { pluginsDir, context, logger, config } = options;
 
   const result: LoadedPlugins = {
     all: [],
     message: [],
     timer: [],
+    accessConfig: new Map(),
   };
+
+  // Get list of plugins to load from config (undefined = load all)
+  const pluginsToLoad: PluginsConfig | undefined = config?.plugins;
 
   // Find all plugin files
   const glob = new Glob('**/plugin.ts');
@@ -68,6 +83,17 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<LoadedP
           const instance = new (exported as new () => Plugin)();
 
           if (!isPlugin(instance)) continue;
+
+          // Check if this plugin should be loaded based on config
+          if (pluginsToLoad !== undefined) {
+            const accessConfig = pluginsToLoad[instance.id];
+            if (accessConfig === undefined) {
+              logger.debug(`Skipping plugin ${instance.id} - not in config`);
+              continue;
+            }
+            // Store access config for later use
+            result.accessConfig.set(instance.id, accessConfig);
+          }
 
           // Load the plugin
           await instance.load(context);

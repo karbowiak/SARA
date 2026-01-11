@@ -53,7 +53,7 @@ const paginationState = new Map<
 >();
 
 export class MemorySlashPlugin implements CommandHandlerPlugin {
-  readonly id = 'memory-command';
+  readonly id = 'memory';
   readonly type = 'command' as const;
   readonly commands = ['memory'];
 

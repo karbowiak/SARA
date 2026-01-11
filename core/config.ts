@@ -67,6 +67,50 @@ export interface PersonalityConfig {
   customInstructions?: string;
 }
 
+// ============================================
+// Access Control Types
+// ============================================
+
+/**
+ * Platform-specific role/user mappings for an access group
+ */
+export interface PlatformAccess {
+  /** Discord role IDs that belong to this group */
+  discord?: string[];
+  /** Slack user/group IDs that belong to this group */
+  slack?: string[];
+}
+
+/**
+ * Access groups map friendly names to platform-specific IDs
+ * Example: { admin: { discord: ['123456'] }, moderator: { discord: ['789'] } }
+ */
+export type AccessGroups = Record<string, PlatformAccess>;
+
+/**
+ * Access configuration for a single feature (plugin/tool)
+ * Empty object {} = everyone can use
+ * { groups: ['admin'] } = only admin group
+ */
+export interface FeatureAccess {
+  /** Groups that can access this feature (empty/undefined = everyone) */
+  groups?: string[];
+  /** Subcommand-level access for slash commands */
+  subcommands?: Record<string, FeatureAccess>;
+}
+
+/**
+ * Plugins configuration - maps plugin IDs to their access config
+ * Plugins not listed here are NOT loaded
+ */
+export type PluginsConfig = Record<string, FeatureAccess>;
+
+/**
+ * Tools configuration - maps tool names to their access config
+ * Tools not listed here are NOT loaded
+ */
+export type ToolsConfig = Record<string, FeatureAccess>;
+
 /**
  * Complete bot configuration
  */
@@ -79,6 +123,114 @@ export interface BotConfig {
   ai?: AIBehaviorConfig;
   /** Personality configuration */
   personality: PersonalityConfig;
+  /** Access group definitions (optional - if not set, no access control) */
+  accessGroups?: AccessGroups;
+  /** Plugins to load and their access config */
+  plugins?: PluginsConfig;
+  /** Tools to load and their access config */
+  tools?: ToolsConfig;
+}
+
+// ============================================
+// Access Control Utilities
+// ============================================
+
+/**
+ * User context for access checking
+ */
+export interface AccessContext {
+  /** Platform (discord, slack, etc.) */
+  platform: string;
+  /** User's role IDs (Discord) or group IDs (Slack) */
+  roleIds?: string[];
+  /** User ID */
+  userId?: string;
+}
+
+/**
+ * Check if a user has access to a feature based on config
+ *
+ * @param config - Bot configuration
+ * @param featureAccess - The feature's access configuration
+ * @param context - User's access context (platform, roles)
+ * @returns true if user has access, false otherwise
+ */
+export function checkAccess(
+  config: BotConfig,
+  featureAccess: FeatureAccess | undefined,
+  context: AccessContext,
+): boolean {
+  // No access config or empty groups = everyone has access
+  if (!featureAccess || !featureAccess.groups || featureAccess.groups.length === 0) {
+    return true;
+  }
+
+  // No access groups defined in config = access control disabled, everyone has access
+  if (!config.accessGroups) {
+    return true;
+  }
+
+  // Check if user belongs to any of the required groups
+  for (const groupName of featureAccess.groups) {
+    const group = config.accessGroups[groupName];
+    if (!group) continue;
+
+    // Get platform-specific IDs for this group
+    const platformIds = group[context.platform as keyof PlatformAccess];
+    if (!platformIds || platformIds.length === 0) continue;
+
+    // Check if any of user's roles match
+    if (context.roleIds) {
+      for (const roleId of context.roleIds) {
+        if (platformIds.includes(roleId)) {
+          return true;
+        }
+      }
+    }
+
+    // Also check user ID directly (for Slack user-based access)
+    if (context.userId && platformIds.includes(context.userId)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Check access to a specific subcommand
+ */
+export function checkSubcommandAccess(
+  config: BotConfig,
+  featureAccess: FeatureAccess | undefined,
+  subcommand: string,
+  context: AccessContext,
+): boolean {
+  // First check if there's subcommand-specific access
+  if (featureAccess?.subcommands?.[subcommand]) {
+    return checkAccess(config, featureAccess.subcommands[subcommand], context);
+  }
+
+  // Fall back to parent feature access
+  return checkAccess(config, featureAccess, context);
+}
+
+/**
+ * Get list of tools accessible to a user
+ */
+export function getAccessibleTools(config: BotConfig, allTools: Tool[], context: AccessContext): Tool[] {
+  if (!config.tools) return [];
+
+  return allTools.filter((tool) => {
+    const toolName = tool.metadata.name;
+    const toolAccess = config.tools?.[toolName];
+
+    // Tool not in config = not loaded
+    if (toolAccess === undefined) return false;
+
+    // Check access
+    return checkAccess(config, toolAccess, context);
+  });
 }
 
 /**

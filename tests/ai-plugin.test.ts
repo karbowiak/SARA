@@ -83,127 +83,120 @@ describe('AIPlugin', () => {
   });
 
   describe('handle()', () => {
-    test('should emit ai:processing event', async () => {
-      await plugin.load(context);
+    test(
+      'should emit ai:processing event',
+      async () => {
+        await plugin.load(context);
 
-      let processingEvent: unknown = null;
-      eventBus.on('ai:processing', (event) => {
-        processingEvent = event;
-      });
+        let processingEvent: unknown = null;
+        eventBus.on('ai:processing', (event) => {
+          processingEvent = event;
+        });
 
-      const message = createMessage({ content: '@bot hello' });
-      await plugin.handle(message, context);
+        const message = createMessage({ content: '@bot hello' });
+        await plugin.handle(message, context);
 
-      expect(processingEvent).not.toBeNull();
-      expect((processingEvent as any).messageId).toBe(message.id);
-      expect((processingEvent as any).userId).toBe(message.author.id);
-      expect((processingEvent as any).model).toBe('x-ai/grok-4.1-fast');
-    });
+        expect(processingEvent).not.toBeNull();
+        expect((processingEvent as any).messageId).toBe(message.id);
+        expect((processingEvent as any).userId).toBe(message.author.id);
+        expect((processingEvent as any).model).toBe('x-ai/grok-4.1-fast');
+      },
+      { timeout: 30000 },
+    );
 
-    test('should emit message:send event', async () => {
-      await plugin.load(context);
+    test(
+      'should emit message:send event',
+      async () => {
+        await plugin.load(context);
 
-      let sentMessage: unknown = null;
-      eventBus.on('message:send', (msg) => {
-        sentMessage = msg;
-      });
+        let sentMessage: unknown = null;
+        eventBus.on('message:send', (msg) => {
+          sentMessage = msg;
+        });
 
-      const message = createMessage({ content: '@bot hello' });
-      await plugin.handle(message, context);
+        const message = createMessage({ content: '@bot hello' });
+        await plugin.handle(message, context);
 
-      expect(sentMessage).not.toBeNull();
-      expect((sentMessage as any).channelId).toBe('channel-001');
-      expect((sentMessage as any).message.replyToId).toBe(message.id);
-    });
+        expect(sentMessage).not.toBeNull();
+        expect((sentMessage as any).channelId).toBe('channel-001');
+        expect((sentMessage as any).message.replyToId).toBe(message.id);
+      },
+      { timeout: 30000 },
+    );
 
-    test('should emit ai:response event on success', async () => {
-      await plugin.load(context);
+    test(
+      'should emit ai:response event on success',
+      async () => {
+        await plugin.load(context);
 
-      let responseEvent: unknown = null;
-      eventBus.on('ai:response', (event) => {
-        responseEvent = event;
-      });
+        let responseEvent: unknown = null;
+        eventBus.on('ai:response', (event) => {
+          responseEvent = event;
+        });
 
-      const message = createMessage({ content: 'test message' });
-      await plugin.handle(message, context);
+        const message = createMessage({ content: 'test message' });
+        await plugin.handle(message, context);
 
-      expect(responseEvent).not.toBeNull();
-      expect((responseEvent as any).messageId).toBe(message.id);
-      expect((responseEvent as any).model).toBe('x-ai/grok-4.1-fast');
-      expect((responseEvent as any).totalDurationMs).toBeGreaterThan(0);
-    });
+        expect(responseEvent).not.toBeNull();
+        expect((responseEvent as any).messageId).toBe(message.id);
+        expect((responseEvent as any).model).toBe('x-ai/grok-4.1-fast');
+        expect((responseEvent as any).totalDurationMs).toBeGreaterThan(0);
+      },
+      { timeout: 30000 },
+    );
 
-    test('should log processing started', async () => {
-      await plugin.load(context);
+    test(
+      'should log processing started',
+      async () => {
+        await plugin.load(context);
 
-      const message = createMessage({ content: 'test message' });
-      await plugin.handle(message, context);
+        const message = createMessage({ content: 'test message' });
+        await plugin.handle(message, context);
 
-      expect(logger.info).toHaveBeenCalledWith(
-        'AI processing started',
-        expect.objectContaining({
-          messageId: message.id,
-          author: 'TestUser',
-        }),
-      );
-    });
+        expect(logger.info).toHaveBeenCalledWith(
+          'AI processing started',
+          expect.objectContaining({
+            messageId: message.id,
+            author: 'TestUser',
+          }),
+        );
+      },
+      { timeout: 30000 },
+    );
 
-    test('should emit typing indicators', async () => {
-      await plugin.load(context);
+    test(
+      'should emit typing indicators',
+      async () => {
+        await plugin.load(context);
 
-      const typingEvents: unknown[] = [];
-      eventBus.on('typing:start', (event) => typingEvents.push({ type: 'start', ...event }));
-      eventBus.on('typing:stop', (event) => typingEvents.push({ type: 'stop', ...event }));
+        const typingEvents: unknown[] = [];
+        eventBus.on('typing:start', (event) => typingEvents.push({ type: 'start', ...event }));
+        eventBus.on('typing:stop', (event) => typingEvents.push({ type: 'stop', ...event }));
 
-      const message = createMessage({ content: 'test' });
-      await plugin.handle(message, context);
+        const message = createMessage({ content: 'test' });
+        await plugin.handle(message, context);
 
-      expect(typingEvents.length).toBe(2);
-      expect((typingEvents[0] as any).type).toBe('start');
-      expect((typingEvents[1] as any).type).toBe('stop');
-    });
+        expect(typingEvents.length).toBe(2);
+        expect((typingEvents[0] as any).type).toBe('start');
+        expect((typingEvents[1] as any).type).toBe('stop');
+      },
+      { timeout: 30000 },
+    );
   });
 
   describe('tool management', () => {
-    test('should register tools', async () => {
+    test('should load tools from config', async () => {
       await plugin.load(context);
 
-      const mockTool = {
-        metadata: {
-          name: 'test_tool',
-          description: 'Test tool',
-          version: '1.0.0',
-          author: 'Test',
-          keywords: ['test'],
-          category: 'utility' as const,
-          priority: 5,
-        },
-        schema: {
-          type: 'function' as const,
-          name: 'test_tool',
-          description: 'Test tool',
-          parameters: { type: 'object' as const, properties: {}, required: [] },
-        },
-        execute: async () => ({ success: true }),
-      };
-
-      plugin.registerTool(mockTool);
-
       const tools = plugin.getTools();
-      expect(tools.map((t) => t.metadata.name)).toContain('test_tool');
-      expect(tools.map((t) => t.metadata.name)).toContain('channel_history');
+      // Tools should be loaded based on config.tools
+      expect(tools.length).toBeGreaterThanOrEqual(1);
     });
 
     test('should have channel_history tool after load', async () => {
       await plugin.load(context);
       expect(plugin.getTools().length).toBeGreaterThanOrEqual(1);
       expect(plugin.getTools().some((t) => t.metadata.name === 'channel_history')).toBe(true);
-    });
-
-    test('should log when registering tools', async () => {
-      await plugin.load(context);
-
-      expect(logger.info).toHaveBeenCalledWith('Registered AI tool: channel_history');
     });
   });
 

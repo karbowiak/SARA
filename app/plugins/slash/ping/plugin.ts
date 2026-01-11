@@ -20,7 +20,7 @@ const COMMAND_DEFINITION: SlashCommandDefinition = {
 };
 
 export class PingCommandPlugin implements CommandHandlerPlugin {
-  readonly id = 'ping-command';
+  readonly id = 'ping';
   readonly type = 'command' as const;
   readonly commands = ['ping'];
 

@@ -55,6 +55,15 @@ export {
   rollback,
 } from './migrator';
 export {
+  formatGroupsForLog,
+  getCachedUserRoles,
+  getOrRefreshUserRoles,
+  resolveRolesToGroups,
+  type UserRoles,
+  type UserRolesInput,
+  upsertUserRoles,
+} from './user-roles';
+export {
   getLastSeen,
   getRecentUsers,
   getUserById,

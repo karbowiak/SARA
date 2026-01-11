@@ -271,10 +271,16 @@ export class AIPlugin implements MessageHandlerPlugin {
 
   /**
    * Build chat messages from the incoming message
-   * Includes:
+   *
+   * Structure:
    * 1. System prompt with config, memories, and semantic search results
-   * 2. Recent channel history (last 20 messages)
-   * 3. Current user message
+   * 2. Single user message containing:
+   *    - Channel context (last N messages for reference)
+   *    - Current user's message
+   *
+   * NOTE: We do NOT add history as separate user/assistant turns.
+   * That confuses the model into thinking it already had a multi-turn conversation.
+   * Instead, channel context is provided inline for reference.
    */
   private async buildMessages(message: BotMessage, tools: Tool[], context: PluginContext): Promise<ChatMessage[]> {
     const config = this.config ?? getBotConfig();
@@ -350,23 +356,45 @@ export class AIPlugin implements MessageHandlerPlugin {
 
     const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
-    // Add recent channel history
-    const historyMessages = this.buildHistoryMessages(message);
-    messages.push(...historyMessages);
-
-    // Add current user message
-    const userContent = this.buildUserContent(message);
+    // Build user message with channel context inline
+    const userContent = this.buildUserContentWithContext(message);
     messages.push({ role: 'user', content: userContent });
 
     return messages;
   }
 
   /**
-   * Build conversation history from recent channel messages
+   * Build user message content with channel context included inline
+   *
+   * Format:
+   * [Channel Context - Recent messages]
+   * @User1: message...
+   * @Bot: response...
+   * @User2: message...
+   *
+   * [Current Message]
+   * @CurrentUser: actual message content
    */
-  private buildHistoryMessages(currentMessage: BotMessage): ChatMessage[] {
-    const messages: ChatMessage[] = [];
+  private buildUserContentWithContext(message: BotMessage): string {
+    const parts: string[] = [];
 
+    // Get channel context (recent messages)
+    const channelContext = this.buildChannelContext(message);
+    if (channelContext) {
+      parts.push(`[Channel Context - Recent messages for reference]\n${channelContext}`);
+    }
+
+    // Build current message content
+    const currentMessage = this.buildUserContent(message);
+    parts.push(`[Current Message]\n${currentMessage}`);
+
+    return parts.join('\n\n');
+  }
+
+  /**
+   * Build channel context from recent messages (formatted as text, not separate turns)
+   */
+  private buildChannelContext(currentMessage: BotMessage): string {
     try {
       // Get recent messages from database (excluding current message)
       const recentMessages = getRecentMessages(currentMessage.channel.id, HISTORY_LIMIT + 1);
@@ -377,26 +405,22 @@ export class AIPlugin implements MessageHandlerPlugin {
         .slice(0, HISTORY_LIMIT)
         .reverse();
 
-      for (const msg of history) {
-        // Determine role based on whether it's from the bot
+      if (history.length === 0) return '';
+
+      // Format as text context (not separate API messages)
+      const lines = history.map((msg) => {
         const isBot = Boolean(msg.is_bot);
-        const role = isBot ? 'assistant' : 'user';
+        const userName = isBot ? (this.config?.bot.name ?? 'Bot') : (msg.display_name ?? msg.username ?? 'Unknown');
+        // created_at is Unix timestamp in milliseconds
+        const timestamp = new Date(msg.created_at).toISOString().substring(11, 16); // HH:MM
+        return `[${timestamp}] @${userName}: ${msg.content}`;
+      });
 
-        // Format content with @username prefix for user messages
-        let content = msg.content;
-        if (!isBot) {
-          const userName = msg.display_name ?? msg.username ?? 'Unknown';
-          content = `@${userName}: ${content}`;
-        }
-
-        messages.push({ role, content });
-      }
+      return lines.join('\n');
     } catch (error) {
-      // Log database errors but continue without history
-      console.error('[AIPlugin] History fetch error:', error);
+      console.error('[AIPlugin] Channel context fetch error:', error);
+      return '';
     }
-
-    return messages;
   }
 
   /**

@@ -45,7 +45,8 @@ bun cli.ts discord --config config/config-sara.ts
 bun cli.ts discord --config config/config-tim.ts
 ```
 
-**Config Structure:**
+### Config Structure
+
 ```typescript
 import type { BotConfig } from '@core';
 
@@ -59,15 +60,15 @@ const config: BotConfig = {
   
   // Bot identity
   bot: {
-    name: 'MyBot',           // Display name
-    identity: 'MyBot',       // Name in prompts (can differ)
+    name: 'MyBot',
+    identity: 'MyBot',       // Name used in prompts
     description: '...',
     developer: 'Your Name',
   },
   
   // AI settings
   ai: {
-    defaultModel: 'anthropic/claude-3.5-sonnet',
+    defaultModel: 'anthropic/claude-sonnet-4-20250514',
     temperature: 0.7,
     maxTokens: 4096,
   },
@@ -81,10 +82,47 @@ const config: BotConfig = {
     restrictions: ['Never do X'],
     customInstructions: '...',
   },
+  
+  // Access control (optional)
+  accessGroups: {
+    admin: {
+      discord: ['ROLE_ID_1', 'ROLE_ID_2'],
+    },
+    moderator: {
+      discord: ['ROLE_ID_3'],
+    },
+  },
+  
+  // Plugin configuration (optional - loads all if omitted)
+  plugins: {
+    ping: {},                           // Everyone can use
+    memory: {},                         // Everyone can use
+    demo: { groups: ['admin'] },        // Admin only
+    admin: { groups: ['admin'] },       // Admin only
+  },
+  
+  // Tool configuration (optional - loads all if omitted)
+  tools: {
+    memory: {},                         // Everyone can use
+    'web-search': {},                   // Everyone can use
+    'channel-history': { groups: ['admin', 'moderator'] },
+  },
 };
 
 export default config;
 ```
+
+### Access Control
+
+The `accessGroups` section maps group names to platform role IDs. Then `plugins` and `tools` sections specify which groups can use each feature:
+
+- **Empty object `{}`** = Everyone can use
+- **`{ groups: ['admin'] }`** = Only users with the admin group
+- **Not listed** = Not loaded at all
+
+User roles are automatically resolved and cached (24h TTL) when they send messages.
+
+---
 
 ## Bun Conventions
 
@@ -116,6 +154,8 @@ import { type BotMessage } from '../../../core';
 ## Plugin Types
 
 All plugins implement a base interface with `id`, `type`, `load()`, and `unload()`.
+
+**Important:** Plugin IDs should be simple names like `ping`, `memory`, `demo` - not `ping-command` or `memory-plugin`.
 
 ### 1. Message Handler Plugin
 
@@ -217,13 +257,15 @@ import {
   type CommandHandlerPlugin,
   type PluginContext,
   type CommandInvocation,
+  type AutocompleteRequest,
+  type ButtonInteraction,
   registerCommand,
   unregisterCommand,
 } from '@core';
 import { greetCommand } from './command';
 
 export class GreetCommandPlugin implements CommandHandlerPlugin {
-  readonly id = 'greet-command';
+  readonly id = 'greet';  // Simple name, not 'greet-command'
   readonly type = 'command' as const;
   readonly commands = ['greet'];
 
@@ -253,13 +295,16 @@ export class GreetCommandPlugin implements CommandHandlerPlugin {
   private async handleCommand(invocation: CommandInvocation): Promise<void> {
     if (invocation.commandName !== 'greet') return;
 
-    const subcommand = invocation.options?.getSubcommand();
+    // Use invocation.subcommand (string) and invocation.args (Record<string, unknown>)
+    // NOT Discord.js style options.getSubcommand() or options.getString()
+    const { subcommand, args } = invocation;
     
     switch (subcommand) {
       case 'user': {
-        const target = invocation.options?.getUser('target');
+        // Args are keyed by option name
+        const targetId = args.target as string;
         await invocation.reply({
-          content: `Hello, ${target?.username}!`,
+          content: `Hello, <@${targetId}>!`,
           ephemeral: true, // Only visible to command user
         });
         break;
@@ -267,20 +312,31 @@ export class GreetCommandPlugin implements CommandHandlerPlugin {
       case 'everyone':
         await invocation.reply({ content: 'Hello everyone!' });
         break;
+      default:
+        await invocation.reply({
+          content: 'Unknown subcommand',
+          ephemeral: true,
+        });
     }
   }
 
   private async handleAutocomplete(request: AutocompleteRequest): Promise<void> {
     if (request.commandName !== 'greet') return;
+    
+    // Filter based on what the user is typing
+    const search = request.focusedOption.value.toLowerCase();
+    
     // Return autocomplete choices
     await request.respond([
       { name: 'Option 1', value: 'opt1' },
       { name: 'Option 2', value: 'opt2' },
-    ]);
+    ].filter(c => c.name.toLowerCase().includes(search)));
   }
 
   private async handleButton(interaction: ButtonInteraction): Promise<void> {
+    // Filter by customId prefix to only handle your buttons
     if (!interaction.customId.startsWith('greet_')) return;
+    
     await interaction.reply({ content: 'Button clicked!', ephemeral: true });
   }
 }
@@ -288,13 +344,27 @@ export class GreetCommandPlugin implements CommandHandlerPlugin {
 export default GreetCommandPlugin;
 ```
 
+**CommandInvocation Properties:**
+- `commandName: string` - The command name (e.g., 'greet')
+- `subcommand?: string` - The subcommand name if any
+- `subcommandGroup?: string` - The subcommand group if any
+- `args: Record<string, unknown>` - Option values keyed by option name
+- `user: BotUser` - The user who ran the command
+- `channel: BotChannel` - The channel where command was run
+- `guildId?: string` - The guild ID (undefined in DMs)
+- `platform: Platform` - The platform ('discord', etc.)
+- `reply(response)` - Reply to the command
+- `defer(ephemeral?)` - Defer the response for long operations
+- `followUp(response)` - Follow up after deferring
+- `showModal(modal)` - Show a modal dialog
+
 **Option Types:**
 - `string` - Text input
 - `integer` - Whole numbers
 - `number` - Decimal numbers  
 - `boolean` - True/false
-- `user` - User picker
-- `channel` - Channel picker
+- `user` - User picker (returns user ID string)
+- `channel` - Channel picker (returns channel ID string)
 - `role` - Role picker (Discord only)
 - `attachment` - File upload
 
@@ -430,6 +500,8 @@ export class WeatherTool implements Tool {
 
 **Tool Categories:** `creative`, `information`, `utility`, `admin`, `general`
 
+**Tool Access Control:** Tools are filtered per-user based on their roles before the LLM call, so the AI never sees tools the user can't access.
+
 ---
 
 ## Event Bus
@@ -454,7 +526,7 @@ context.eventBus.on('interaction:modal', (interaction) => { ... });
 
 ## Database
 
-Repositories in `core/database/`. Uses SQLite with better-sqlite3.
+Repositories in `core/database/`. Uses SQLite with bun:sqlite.
 
 ```typescript
 import { 
@@ -473,12 +545,60 @@ import {
   searchMemories, 
   deleteMemory 
 } from '@core/database';
+
+// User Roles (for access control)
+import {
+  getOrRefreshUserRoles,
+  resolveRolesToGroups,
+  formatGroupsForLog,
+} from '@core/database';
 ```
+
+**Key Tables:**
+- `messages` - Chat message history with embeddings
+- `users` - User profiles across platforms
+- `memories` - Per-user per-guild memory storage
+- `user_roles` - Cached role → group mappings (24h TTL)
 
 **Migrations:** `migrations/001_create_messages.ts`, etc.
 - Run: `bun cli.ts db:migrate`
 - Rollback: `bun cli.ts db:rollback`
 - Status: `bun cli.ts db:status`
+
+---
+
+## User Roles & Access Control
+
+The bot automatically tracks user roles and resolves them to access groups.
+
+### How It Works
+
+1. **Config defines groups:** `accessGroups` maps group names to platform role IDs
+2. **User sends message:** Logger plugin caches their role IDs → resolved groups
+3. **AI tools filtered:** Before LLM call, tools are filtered based on user's groups
+4. **Cache refreshes:** 24h TTL, or immediately if roles change
+
+### Checking Access in Code
+
+```typescript
+import { checkAccess, getAccessibleTools } from '@core';
+import { getOrRefreshUserRoles, resolveRolesToGroups } from '@core/database';
+
+// Check if user has access to a feature
+const userGroups = resolveRolesToGroups(user.roleIds, 'discord', config);
+const hasAccess = checkAccess(featureAccess, userGroups);
+
+// Get tools accessible to a user
+const accessibleTools = getAccessibleTools(allTools, toolAccessConfig, userGroups);
+```
+
+### Terminal Output
+
+Messages are logged with resolved group names:
+```
+[14:32:15] [Discord] Server/#general | User [admin, moderator]: hello
+[14:32:16] [Discord] Server/#general | OtherUser [everyone]: hi
+```
 
 ---
 
@@ -589,7 +709,7 @@ export default class GreetCommand extends Command {
 Database migrations in `migrations/`. Numbered sequentially.
 
 ```typescript
-// migrations/002_add_settings.ts
+// migrations/003_add_settings.ts
 import type { Database } from 'bun:sqlite';
 
 export function up(db: Database): void {
@@ -629,7 +749,7 @@ The `core/` directory contains platform-agnostic framework code:
 | `command-registry.ts` | Registers slash commands for platform adapters |
 | `llm-client.ts` | OpenRouter API client for LLM calls |
 | `embedder.ts` | Text embedding using transformers.js |
-| `config.ts` | Bot configuration loading |
+| `config.ts` | Bot configuration loading and access control utilities |
 | `cli/` | CLI framework (Command base class, parser, runner) |
 | `database/` | Database client and repositories |
 | `types/` | TypeScript interfaces and type guards |
@@ -645,9 +765,11 @@ import {
   type Tool,
   type BotMessage,
   type BotUser,
+  type BotConfig,
   type EventBus,
   type Logger,
   type CommandInvocation,
+  type FeatureAccess,
   
   // Functions
   registerCommand,
@@ -655,6 +777,8 @@ import {
   loadPlugins,
   loadTools,
   createEventBus,
+  checkAccess,
+  getAccessibleTools,
   
   // Classes
   Command,
@@ -686,6 +810,7 @@ await adapter.connect();
 - Handles `message:send` events → Discord API calls
 - Registers slash commands with Discord API
 - Transforms buttons, selects, modals to Discord components
+- Populates `user.roleIds` from guild member data
 
 **Adding a New Platform:**
 
@@ -693,6 +818,49 @@ await adapter.connect();
 2. Implement event translation (incoming → normalized, outgoing → platform API)
 3. Handle slash command registration for the platform
 4. Create startup command in `app/commands/<platform>.command.ts`
+
+---
+
+## Common Mistakes to Avoid
+
+### ❌ Using Discord.js API in Plugins
+
+```typescript
+// WRONG - Discord.js style
+const subcommand = invocation.options?.getSubcommand();
+const value = invocation.options?.getString('name');
+
+// CORRECT - Normalized API
+const subcommand = invocation.subcommand;
+const value = invocation.args.name as string;
+```
+
+### ❌ Complex Plugin IDs
+
+```typescript
+// WRONG
+readonly id = 'greet-command';
+readonly id = 'memory-slash-plugin';
+
+// CORRECT
+readonly id = 'greet';
+readonly id = 'memory';
+```
+
+### ❌ Forgetting to Filter by Command Name
+
+```typescript
+// WRONG - handles ALL commands
+private async handleCommand(invocation: CommandInvocation): Promise<void> {
+  // This runs for every command!
+}
+
+// CORRECT - filter first
+private async handleCommand(invocation: CommandInvocation): Promise<void> {
+  if (invocation.commandName !== 'mycommand') return;
+  // Now safe to handle
+}
+```
 
 ---
 
@@ -727,24 +895,12 @@ describe('MyPlugin', () => {
   });
 
   afterEach(() => {
-    // Clean up mocks
     mock.restore();
   });
 
   test('should load without error', async () => {
-    await plugin.load({ eventBus: mockEventBus, logger: mockLogger });
+    await plugin.load({ eventBus: mockEventBus, logger: mockLogger } as any);
     expect(mockLogger.info).toHaveBeenCalled();
-  });
-
-  test('should handle messages', async () => {
-    const message = {
-      id: '123',
-      content: 'test',
-      platform: 'discord',
-      // ... other fields
-    };
-    
-    expect(plugin.shouldHandle(message)).toBe(true);
   });
 });
 ```
@@ -755,22 +911,4 @@ bun test                    # Run all tests
 bun test my-feature         # Run matching tests
 bun test --watch            # Watch mode
 bun test --coverage         # With coverage
-```
-
-**Mocking:**
-```typescript
-// Mock a module
-mock.module('../core/database', () => ({
-  insertMessage: mock(() => 1),
-  getRecentMessages: mock(() => []),
-}));
-
-// Spy on a method
-const spy = spyOn(object, 'method');
-expect(spy).toHaveBeenCalledWith('arg');
-
-// Mock fetch
-globalThis.fetch = mock(() => 
-  Promise.resolve(new Response(JSON.stringify({ data: 'test' })))
-);
 ```

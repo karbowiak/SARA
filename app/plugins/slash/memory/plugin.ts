@@ -76,8 +76,7 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
   private async handleCommand(invocation: CommandInvocation): Promise<void> {
     if (invocation.commandName !== 'memory') return;
 
-    const { guildId, platform, user, options } = invocation;
-    const subcommand = options?.getSubcommand();
+    const { guildId, platform, user, subcommand, args } = invocation;
 
     // Must be in a guild
     if (!guildId) {
@@ -100,10 +99,10 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
 
     switch (subcommand) {
       case 'list':
-        await this.handleList(invocation, dbUser.id, guildId, options?.getString('type') as MemoryType | null);
+        await this.handleList(invocation, dbUser.id, guildId, (args.type as MemoryType) ?? null);
         break;
       case 'delete': {
-        const memoryId = options?.getString('memory', true) ?? '';
+        const memoryId = (args.memory as string) ?? '';
         await this.handleDelete(invocation, dbUser.id, guildId, memoryId);
         break;
       }

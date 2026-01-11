@@ -113,13 +113,15 @@ config/                 # Bot configurations (gitignored)
 
 Features ported to new framework:
 - ✅ AI chat with tool calling
-- ✅ Memory system (save/recall/forget)
-- ✅ Web search tool
-- ✅ Message history search
-- ✅ Slash commands
+- ✅ Memory system (save/recall/forget/list)
+- ✅ Web search tool (Tavily API)
+- ✅ Message history search (semantic + recent)
+- ✅ Slash commands (/ping, /demo, /memory, /imagine)
+- ✅ Image generation (OpenRouter, multiple models, style presets)
+- ✅ Thinking tool (reasoning model escalation)
+- ✅ Last seen tool (user activity tracking)
+- ✅ Currency conversion tool (real-time exchange rates)
 
 Features not yet ported:
-- ⬜ Image generation
 - ⬜ Instagram/TikTok media processing
-- ⬜ Stream monitoring
-- ⬜ Thinking tool (reasoning model escalation)
+- ⬜ Stream monitoring (Twitch/YouTube/Kick)

@@ -10,10 +10,13 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 
 | Tool | File | Description |
 |------|------|-------------|
-| **channel_history** | `channel-history.tool.ts` | Search/retrieve message history. Supports "recent" mode (last N messages) and "search" mode (semantic search) |
+| **channel_history** | `channel-history.tool.ts` | Search/retrieve message history. Supports "recent" mode (last N messages) and "search" mode (semantic search via OpenAI embeddings) |
 | **web_search** | `web-search.tool.ts` | Search the web using Tavily API. Requires `TAVILY_API_KEY` |
 | **memory** | `memory.tool.ts` | Save/recall/forget user memories (preferences, facts, instructions, context). Guild-scoped with auto-deduplication |
 | **last_seen** | `last-seen.tool.ts` | Look up user activity - when last seen, search by username, list recently active users |
+| **image_generation** | `image-generation.tool.ts` | Generate images from text prompts. Supports aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4), resolutions (1K-4K), and style presets |
+| **think_deeply** | `thinking.tool.ts` | Escalate to a reasoning model for complex multi-step problems |
+| **currency_convert** | `currency.tool.ts` | Convert between currencies using real-time exchange rates |
 
 ## Slash Commands
 
@@ -22,6 +25,7 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 | **/ping** | `app/plugins/slash/ping/` | Simple ping/pong test command |
 | **/demo** | `app/plugins/slash/demo/` | Demo all interaction types (autocomplete, buttons, selects, modals, embeds) |
 | **/memory** | `app/plugins/slash/memory/` | User-facing memory management (list, delete, clear memories) |
+| **/imagine** | `app/plugins/slash/imagine/` | Generate images with style presets, aspect ratios, and interactive buttons (regenerate, vary, upscale) |
 
 ## Tools to Port (from SARA v2)
 
@@ -30,14 +34,14 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 | Tool | Status | Description | Dependencies |
 |------|--------|-------------|--------------|
 | **MemoryTools** | ✅ Done | Save/update user preferences and context to persistent storage | Database schema for memories |
-| **ThinkingTool** | 🔲 Todo | Escalate complex problems to a reasoning model (o1-mini) with extended thinking | OpenRouter API |
-| **ImageGenerationTool** | 🔲 Todo | Generate images from text prompts using OpenRouter | OpenRouter API |
+| **ImageGenerationTool** | ✅ Done | Generate images with aspect ratios, resolutions, style presets. Smart retry on failures | OpenRouter API |
+| **ThinkingTool** | ✅ Done | Escalate complex problems to a reasoning model with extended thinking | OpenRouter API |
+| **CurrencyConversionTool** | ✅ Done | Convert between currencies using real-time exchange rates | Free API (no key required) |
 
 ### Priority 2 - Utility
 
 | Tool | Status | Description | Dependencies |
 |------|--------|-------------|--------------|
-| **CurrencyConversionTool** | 🔲 Todo | Convert between currencies using real-time exchange rates | exchangerate-api.com |
 | **ReminderTool** | 🔲 Todo | Create/list/cancel reminders delivered via DM | Timer infrastructure, RemindersService |
 | **SearchKnowledgeTool** | 🔲 Todo | Retrieve knowledge base entries by ID | Knowledge base schema |
 

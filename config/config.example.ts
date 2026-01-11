@@ -429,6 +429,12 @@ const config: BotConfig = {
      */
     think_deeply: {},
 
+    /**
+     * currency_convert - Convert between currencies with real-time rates
+     * No API key required, uses free ExchangeRate-API
+     */
+    currency_convert: {},
+
     // ============================================
     // More Examples (commented out)
     // ============================================

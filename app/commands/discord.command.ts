@@ -170,12 +170,44 @@ export default class DiscordCommand extends Command {
     this.info('Connecting to Discord...');
     await adapter.connect(config.tokens.discord);
 
+    // Start timer plugins
+    const timerIntervals: NodeJS.Timeout[] = [];
+    for (const timerPlugin of plugins.timer) {
+      const intervalMs = timerPlugin.timerConfig.intervalMs;
+      logger.info(`Starting timer plugin: ${timerPlugin.id} (every ${intervalMs / 1000}s)`);
+
+      const runTick = async () => {
+        try {
+          await timerPlugin.tick(context);
+        } catch (err) {
+          logger.error(`Timer ${timerPlugin.id} tick error`, {
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      };
+
+      // Run immediately if configured
+      if (timerPlugin.timerConfig.runImmediately) {
+        runTick();
+      }
+
+      // Schedule recurring ticks
+      const interval = setInterval(runTick, intervalMs);
+      timerIntervals.push(interval);
+    }
+
     // Keep running until interrupted
     this.info('Bot is running. Press Ctrl+C to stop.');
 
     await new Promise<void>((resolve) => {
       const shutdown = async () => {
         this.info('Shutting down...');
+
+        // Stop all timer intervals
+        for (const interval of timerIntervals) {
+          clearInterval(interval);
+        }
+
         await unloadPlugins(plugins.all, logger);
         await adapter.disconnect();
         resolve();

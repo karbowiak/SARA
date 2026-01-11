@@ -8,13 +8,15 @@
  *   bun cli prompt --tools                  - Include tool descriptions
  */
 
-import { buildSystemPrompt, Command, loadBotConfig, type Tool } from '@core';
-import { getRecentMessages, initDatabase, searchSimilar } from '../../core/database';
-import { embed, initEmbedder, isEmbedderReady } from '../../core/embedder';
+import { Command, loadBotConfig, type Platform, type Tool } from '@core';
+import { getRecentMessages, initDatabase } from '@core/database';
+import { initEmbedder } from '@core/embedder';
+import { buildFullSystemPrompt } from '../helpers/prompt-builder';
 
 // Default channel for testing (your Discord channel)
 const DEFAULT_GUILD_ID = '442642549971353621';
 const DEFAULT_CHANNEL_ID = '1214874823063502898';
+const DEFAULT_USER_ID = '123456789';
 
 export default class PromptCommand extends Command {
   static override signature = `
@@ -25,21 +27,32 @@ export default class PromptCommand extends Command {
     {--tools : Include placeholder tool descriptions}
     {--channel= : Override channel ID}
     {--guild= : Override guild ID}
-    {--all-channels : Search all channels for semantic matches, not just the specified one}
+    {--user= : Override user ID (for memory lookup)}
+    {--skip-memories : Skip user memory lookup}
+    {--skip-knowledge : Skip knowledge base search}
+    {--skip-messages : Skip semantic message search}
   `;
   static override description = 'Preview the generated system prompt or simulate a query with context';
 
   async handle(): Promise<number> {
     const query = this.argument('query') as string | undefined;
     const configPath = this.option('config') as string;
-    const platform = (this.option('platform') as string) ?? 'discord';
+    const platform = ((this.option('platform') as string) ?? 'discord') as Platform;
     const includeTools = this.option('tools') as boolean;
     const channelId = (this.option('channel') as string) || DEFAULT_CHANNEL_ID;
-    const _guildId = (this.option('guild') as string) || DEFAULT_GUILD_ID;
-    const allChannels = this.option('all-channels') as boolean;
+    const guildId = (this.option('guild') as string) || DEFAULT_GUILD_ID;
+    const userId = (this.option('user') as string) || DEFAULT_USER_ID;
+    const skipMemories = this.option('skip-memories') as boolean;
+    const skipKnowledge = this.option('skip-knowledge') as boolean;
+    const skipMessages = this.option('skip-messages') as boolean;
 
-    // Initialize database
+    // Initialize database and embedder
     initDatabase();
+
+    if (query && query.length >= 3) {
+      this.info('Initializing embedder for semantic search...');
+      await initEmbedder();
+    }
 
     // Load config
     const path = await import('path');
@@ -90,44 +103,22 @@ export default class PromptCommand extends Command {
         ]
       : undefined;
 
-    // Get semantic context if we have a query
-    let semanticContext = '';
-    if (query && query.length >= 3) {
-      this.info('Initializing embedder for semantic search...');
-      await initEmbedder();
-
-      if (isEmbedderReady()) {
-        try {
-          const queryEmbedding = await embed(query);
-          const similar = searchSimilar({
-            embedding: queryEmbedding,
-            channelId: allChannels ? undefined : channelId,
-            limit: 5,
-            decayFactor: 0.98,
-            includeBot: false,
-          });
-
-          const relevantResults = similar.filter((s) => s.score >= 0.5);
-          if (relevantResults.length > 0) {
-            semanticContext = this.formatSemanticResults(relevantResults);
-            this.success(`Found ${relevantResults.length} relevant messages`);
-          } else {
-            this.comment('No relevant semantic matches found');
-          }
-        } catch (error) {
-          this.warning(`Semantic search failed: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    }
-
-    // Build the system prompt
-    const systemPrompt = buildSystemPrompt(config, {
+    // Build the system prompt using centralized helper
+    const messageContent = query ?? 'Hello!';
+    const { systemPrompt, contextParts, debug } = await buildFullSystemPrompt(config, {
+      messageContent,
       platform,
+      guildId,
+      channelId,
+      userId,
+      userName: 'TestUser',
       tools: mockTools,
-      additionalContext: semanticContext || undefined,
+      skipMemories,
+      skipKnowledgeSearch: skipKnowledge,
+      skipMessageSearch: skipMessages,
     });
 
-    // Get recent history
+    // Get recent history for display
     const recentMessages = getRecentMessages(channelId, 20);
     const historyMessages = recentMessages.reverse().map((msg) => {
       const isBot = Boolean(msg.is_bot);
@@ -139,12 +130,28 @@ export default class PromptCommand extends Command {
     this.info(`System Prompt Preview`);
     this.info(`Bot: ${config.bot.identity ?? config.bot.name}`);
     this.info(`Platform: ${platform}`);
+    this.info(`Guild: ${guildId}`);
     this.info(`Channel: ${channelId}`);
     this.info(`Tools: ${includeTools ? 'yes' : 'no'}`);
     console.log('═'.repeat(60));
     console.log('');
     console.log(systemPrompt);
     console.log('');
+
+    // Show context parts breakdown
+    if (contextParts.length > 0) {
+      console.log('═'.repeat(60));
+      this.info(`Context Parts (${contextParts.length})`);
+      console.log('─'.repeat(60));
+      this.comment(`Memories: ${debug.memoriesCount}`);
+      this.comment(
+        `Knowledge: ${debug.knowledgeCount}${debug.topKnowledgeScore ? ` (top: ${(debug.topKnowledgeScore * 100).toFixed(0)}%)` : ''}`,
+      );
+      this.comment(
+        `Semantic results: ${debug.semanticResultsCount}${debug.topSemanticScore ? ` (top: ${(debug.topSemanticScore * 100).toFixed(0)}%)` : ''}`,
+      );
+      console.log('');
+    }
 
     if (historyMessages.length > 0) {
       console.log('═'.repeat(60));
@@ -172,15 +179,5 @@ export default class PromptCommand extends Command {
     }
 
     return 0;
-  }
-
-  private formatSemanticResults(
-    results: Array<{ userName: string; content: string; score: number; timestamp: number }>,
-  ): string {
-    const lines = results.map((r) => {
-      const date = new Date(r.timestamp).toLocaleDateString();
-      return `- [${date}] @${r.userName}: ${r.content.substring(0, 200)}${r.content.length > 200 ? '...' : ''} (relevance: ${(r.score * 100).toFixed(0)}%)`;
-    });
-    return `\n## Relevant Past Conversations\n${lines.join('\n')}`;
   }
 }

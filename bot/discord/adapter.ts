@@ -20,6 +20,7 @@ import type {
 } from '@core';
 import { checkAccess, getCommandRegistry } from '@core';
 import {
+  type ActionRowBuilder,
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
   Client,
@@ -29,6 +30,7 @@ import {
   GatewayIntentBits,
   type Interaction,
   type Message,
+  type MessageActionRowComponentBuilder,
   MessageFlags,
   type StringSelectMenuInteraction,
   type User,
@@ -325,6 +327,50 @@ export class DiscordAdapter {
         request.callback(null);
       }
     });
+
+    // Send DM to a user
+    this.eventBus.on('dm:send', async (request) => {
+      if (request.platform !== 'discord') return;
+
+      try {
+        const user = await this.client.users.fetch(request.userId);
+        const dmChannel = await user.createDM();
+
+        // Build message options
+        const messageOptions: {
+          content?: string;
+          files?: Array<{ attachment: Buffer | string; name: string }>;
+          components?: ActionRowBuilder<MessageActionRowComponentBuilder>[];
+        } = {};
+
+        if (request.message.content) {
+          messageOptions.content = request.message.content;
+        }
+
+        if (request.message.attachments && request.message.attachments.length > 0) {
+          messageOptions.files = request.message.attachments.map((att) => ({
+            attachment: att.data,
+            name: att.filename,
+          }));
+        }
+
+        if (request.message.components && request.message.components.length > 0) {
+          messageOptions.components = this.transformComponents(
+            request.message.components,
+          ) as ActionRowBuilder<MessageActionRowComponentBuilder>[];
+        }
+
+        await dmChannel.send(messageOptions);
+
+        // Log outgoing DM
+        this.logOutgoingDM(user.username, request.message.content);
+      } catch (error) {
+        this.logger.error('Failed to send DM', {
+          userId: request.userId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
   }
 
   // ============================================
@@ -421,6 +467,35 @@ export class DiscordAdapter {
     console.log(
       `${dim}[${timestamp}]${reset} ` +
         `${yellow}${guild}${reset}${dim}/${reset}${blue}#${channelName}${reset} ` +
+        `${dim}│${reset} ${magenta}${botName}${reset} ${magenta}[BOT]${reset}` +
+        `${dim}:${reset} ${white}${displayContent}${reset}`,
+    );
+  }
+
+  /**
+   * Log outgoing DM to terminal
+   */
+  private logOutgoingDM(username: string, content?: string): void {
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const botName = this.config?.bot.name ?? 'Bot';
+
+    // Truncate long messages for terminal display
+    let displayContent = content ?? '';
+    if (displayContent.length > 200) {
+      displayContent = `${displayContent.substring(0, 200)}...`;
+    }
+
+    // ANSI colors
+    const dim = '\x1b[2m';
+    const reset = '\x1b[0m';
+    const cyan = '\x1b[36m';
+    const magenta = '\x1b[35m';
+    const white = '\x1b[37m';
+
+    // Format: [HH:MM:SS] DM → @username │ BotName [BOT]: message
+    console.log(
+      `${dim}[${timestamp}]${reset} ` +
+        `${magenta}DM${reset} ${dim}→${reset} ${cyan}@${username}${reset} ` +
         `${dim}│${reset} ${magenta}${botName}${reset} ${magenta}[BOT]${reset}` +
         `${dim}:${reset} ${white}${displayContent}${reset}`,
     );

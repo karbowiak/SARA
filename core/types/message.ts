@@ -104,6 +104,15 @@ export interface MessageSendRequest {
 }
 
 /**
+ * DM send request (send to a user directly)
+ */
+export interface DMSendRequest {
+  userId: string;
+  message: OutgoingMessage;
+  platform: Platform;
+}
+
+/**
  * Reaction info
  */
 export interface BotReaction {

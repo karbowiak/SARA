@@ -17,6 +17,8 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 | **image_generation** | `image-generation.tool.ts` | Generate images from text prompts. Supports aspect ratios (1:1, 16:9, 9:16, 4:3, 3:4), resolutions (1K-4K), and style presets |
 | **think_deeply** | `thinking.tool.ts` | Escalate to a reasoning model for complex multi-step problems |
 | **currency_convert** | `currency.tool.ts` | Convert between currencies using real-time exchange rates |
+| **reminder** | `reminder.tool.ts` | Create, list, and cancel reminders via natural language. Supports recurring (daily/weekly/monthly) |
+| **search_knowledge** | `knowledge-search.tool.ts` | Search the server's knowledge base. Semantic search with tag filtering |
 
 ## Slash Commands
 
@@ -24,8 +26,10 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 |---------|----------|-------------|
 | **/ping** | `app/plugins/slash/ping/` | Simple ping/pong test command |
 | **/demo** | `app/plugins/slash/demo/` | Demo all interaction types (autocomplete, buttons, selects, modals, embeds) |
-| **/memory** | `app/plugins/slash/memory/` | User-facing memory management (list, delete, clear memories) |
+| **/memory** | `app/plugins/slash/memory/` | User-facing memory management (add with AI interpretation, list, delete, clear) |
 | **/imagine** | `app/plugins/slash/imagine/` | Generate images with style presets, aspect ratios, and interactive buttons (regenerate, vary, upscale) |
+| **/reminder** | `app/plugins/slash/reminder/` | Set/list/cancel reminders. Delivered via DM with snooze buttons |
+| **/knowledge** | `app/plugins/slash/knowledge/` | Manage server knowledge base. Add, search, list, get, delete entries with tag support |
 
 ## Tools to Port (from SARA v2)
 
@@ -37,13 +41,13 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 | **ImageGenerationTool** | ✅ Done | Generate images with aspect ratios, resolutions, style presets. Smart retry on failures | OpenRouter API |
 | **ThinkingTool** | ✅ Done | Escalate complex problems to a reasoning model with extended thinking | OpenRouter API |
 | **CurrencyConversionTool** | ✅ Done | Convert between currencies using real-time exchange rates | Free API (no key required) |
+| **ReminderTool** | ✅ Done | Create/list/cancel reminders. Recurring support (daily/weekly/monthly). Snooze buttons in DM | Timer plugin, database |
 
 ### Priority 2 - Utility
 
 | Tool | Status | Description | Dependencies |
 |------|--------|-------------|--------------|
-| **ReminderTool** | 🔲 Todo | Create/list/cancel reminders delivered via DM | Timer infrastructure, RemindersService |
-| **SearchKnowledgeTool** | 🔲 Todo | Retrieve knowledge base entries by ID | Knowledge base schema |
+| **SearchKnowledgeTool** | ✅ Done | Search guild knowledge base semantically | Knowledge base schema, embeddings |
 
 ## Skipped Tools
 

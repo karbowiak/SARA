@@ -2,7 +2,7 @@
  * /memory command definition
  *
  * Allows users to view and manage their stored memories
- * Subcommands: list, delete, clear
+ * Subcommands: add (modal), list, delete, clear
  */
 
 import type { SlashCommandDefinition } from '@core';
@@ -12,6 +12,10 @@ export const memoryCommand: SlashCommandDefinition = {
   description: 'View and manage what the bot remembers about you',
   guildOnly: true,
   subcommands: [
+    {
+      name: 'add',
+      description: 'Add a new memory (opens a form)',
+    },
     {
       name: 'list',
       description: 'List all memories the bot has about you',

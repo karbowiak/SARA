@@ -311,6 +311,7 @@ const config: BotConfig = {
     memory: {
       // Subcommand-specific access (overrides parent)
       subcommands: {
+        add: {}, // Everyone - add new memories with AI interpretation
         list: {}, // Everyone
         delete: {}, // Everyone
         clear: { groups: ['admin'] }, // Admin only
@@ -322,6 +323,24 @@ const config: BotConfig = {
      * Generates images with interactive buttons (regenerate, vary, upscale)
      */
     imagine: {},
+
+    /**
+     * /reminder - Set reminders delivered via DM
+     * Supports relative times (30m, 2h) and absolute times
+     */
+    reminder: {},
+
+    /**
+     * /knowledge - Manage server knowledge base
+     * Add, search, list, and delete shared knowledge entries
+     */
+    knowledge: {},
+
+    /**
+     * reminder-timer - Background timer that delivers due reminders
+     * Required for reminders to work
+     */
+    'reminder-timer': {},
 
     // ============================================
     // More Examples (commented out)
@@ -434,6 +453,18 @@ const config: BotConfig = {
      * No API key required, uses free ExchangeRate-API
      */
     currency_convert: {},
+
+    /**
+     * reminder - Create, list, and cancel reminders via natural language
+     * Reminders are delivered via DM
+     */
+    reminder: {},
+
+    /**
+     * search_knowledge - Search the server's knowledge base
+     * Semantic search across guild-shared knowledge entries
+     */
+    search_knowledge: {},
 
     // ============================================
     // More Examples (commented out)

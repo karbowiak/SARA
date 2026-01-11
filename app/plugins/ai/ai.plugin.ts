@@ -9,7 +9,6 @@ import {
   type AccessContext,
   type BotConfig,
   type BotMessage,
-  buildSystemPrompt,
   type ChatMessage,
   createOpenRouterClient,
   getAccessibleTools,
@@ -23,28 +22,15 @@ import {
   type ToolCall,
   type ToolExecutionContext,
 } from '@core';
-import {
-  formatMemoriesForPrompt,
-  getMemoriesForPrompt,
-  getRecentMessages,
-  getUserByPlatformId,
-  type SimilarMessage,
-  searchSimilar,
-} from '@core/database';
+import { getRecentMessages } from '@core/database';
 import path from 'path';
-import { embed, isEmbedderReady } from '../../../core/embedder';
+import { buildFullSystemPrompt } from '../../helpers/prompt-builder';
 
 /** Fallback model if not configured */
 const FALLBACK_MODEL = 'x-ai/grok-4.1-fast';
 
 /** Number of recent messages to include in conversation history */
 const HISTORY_LIMIT = 20;
-
-/** Number of semantic search results to include */
-const SEMANTIC_LIMIT = 5;
-
-/** Minimum similarity score to include in semantic results */
-const SEMANTIC_THRESHOLD = 0.3;
 
 export class AIPlugin implements MessageHandlerPlugin {
   readonly id = 'ai';
@@ -281,84 +267,35 @@ export class AIPlugin implements MessageHandlerPlugin {
    */
   private async buildMessages(message: BotMessage, tools: Tool[], context: PluginContext): Promise<ChatMessage[]> {
     const config = this.config ?? getBotConfig();
-    const additionalContextParts: string[] = [];
-
-    // Get user memories if we have a guild context
-    if (message.guildId) {
-      try {
-        const user = getUserByPlatformId(message.platform, message.author.id);
-        if (user) {
-          const memories = await getMemoriesForPrompt({
-            userId: user.id,
-            guildId: message.guildId,
-            currentMessage: message.content,
-            limit: 10,
-          });
-
-          if (memories.length > 0) {
-            const userName = message.author.displayName ?? message.author.name;
-            const memoryContext = formatMemoriesForPrompt(memories, userName);
-            additionalContextParts.push(memoryContext);
-            context.logger.debug('Loaded user memories', {
-              userId: user.id,
-              memoriesCount: memories.length,
-            });
-          }
-        }
-      } catch (error) {
-        context.logger.error('Failed to load user memories', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
-
-    // Get semantic search results for relevant older messages
-    if (isEmbedderReady() && message.content.length >= 10) {
-      try {
-        const embedStartTime = Date.now();
-        const queryEmbedding = await embed(message.content);
-        const similar = searchSimilar({
-          embedding: queryEmbedding,
-          channelId: message.channel.id,
-          limit: SEMANTIC_LIMIT,
-          decayFactor: 0.98,
-          includeBot: false,
-        });
-
-        // Filter by threshold only - don't exclude recent messages
-        const relevantResults = similar.filter((s) => s.score >= SEMANTIC_THRESHOLD);
-
-        if (relevantResults.length > 0) {
-          additionalContextParts.push(this.formatSemanticResults(relevantResults));
-          context.logger.debug('Semantic search completed', {
-            query: message.content.substring(0, 50),
-            resultsFound: relevantResults.length,
-            topScore: relevantResults[0]?.score.toFixed(3),
-            durationMs: Date.now() - embedStartTime,
-          });
-        }
-      } catch (error) {
-        context.logger.error('Semantic search failed', {
-          error: error instanceof Error ? error.message : String(error),
-        });
-      }
-    }
 
     // Check if user is replying to a failed image generation request
     const imageRetryContext = await this.detectImageRetryContext(message, context);
     if (imageRetryContext) {
-      additionalContextParts.push(imageRetryContext);
-      context.logger.info('Detected image retry context', {
-        messageId: message.id,
-      });
+      context.logger.info('Detected image retry context', { messageId: message.id });
     }
 
-    // Build system prompt with all context
-    const systemPrompt = buildSystemPrompt(config, {
+    // Build system prompt with all context using centralized helper
+    const { systemPrompt, debug } = await buildFullSystemPrompt(config, {
+      messageContent: message.content,
       platform: message.platform,
+      guildId: message.guildId,
+      channelId: message.channel.id,
+      userId: message.author.id,
+      userName: message.author.displayName ?? message.author.name,
       tools: tools.length > 0 ? tools : undefined,
-      additionalContext: additionalContextParts.length > 0 ? additionalContextParts.join('\n\n') : undefined,
+      additionalContext: imageRetryContext ?? undefined,
     });
+
+    // Log what was loaded
+    if (debug.memoriesCount > 0 || debug.knowledgeCount > 0 || debug.semanticResultsCount > 0) {
+      context.logger.debug('System prompt context loaded', {
+        memories: debug.memoriesCount,
+        knowledge: debug.knowledgeCount,
+        semanticResults: debug.semanticResultsCount,
+        topKnowledgeScore: debug.topKnowledgeScore?.toFixed(3),
+        topSemanticScore: debug.topSemanticScore?.toFixed(3),
+      });
+    }
 
     const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
@@ -434,35 +371,6 @@ export class AIPlugin implements MessageHandlerPlugin {
       console.error('[AIPlugin] Conversation history fetch error:', error);
       return [];
     }
-  }
-
-  /**
-   * Format semantic search results for injection into system prompt
-   */
-  private formatSemanticResults(results: SimilarMessage[]): string {
-    const lines = results.map((r) => {
-      const age = this.formatAge(r.timestamp);
-      return `- [${age}] @${r.userName}: "${r.content.substring(0, 150)}${r.content.length > 150 ? '...' : ''}"`;
-    });
-
-    return `# Relevant Past Messages
-The following older messages may be relevant to this conversation:
-${lines.join('\n')}`;
-  }
-
-  /**
-   * Format timestamp as human-readable age
-   */
-  private formatAge(timestamp: number): string {
-    const age = Date.now() - timestamp;
-    const minutes = Math.floor(age / 60000);
-    const hours = Math.floor(age / 3600000);
-    const days = Math.floor(age / 86400000);
-
-    if (days > 0) return `${days}d ago`;
-    if (hours > 0) return `${hours}h ago`;
-    if (minutes > 0) return `${minutes}m ago`;
-    return 'just now';
   }
 
   /**

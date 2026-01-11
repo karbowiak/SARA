@@ -13,7 +13,7 @@ import type {
   SelectMenuInteraction,
   ShortcutInvocation,
 } from './command';
-import type { BotMessage, BotReaction, MessageSendRequest, Platform } from './message';
+import type { BotMessage, BotReaction, DMSendRequest, MessageSendRequest, Platform } from './message';
 
 /**
  * AI processing event payloads
@@ -99,6 +99,7 @@ export interface EventMap {
   // Outgoing events (to platform adapters)
   'message:send': MessageSendRequest;
   'message:fetch': MessageFetchRequest;
+  'dm:send': DMSendRequest;
   'typing:start': TypingRequest;
   'typing:stop': TypingRequest;
   'command:respond': { invocation: CommandInvocation; response: CommandResponse };

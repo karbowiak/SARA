@@ -2,7 +2,7 @@
  * /memory plugin
  *
  * Allows users to view, manage, and clear their stored memories
- * Features: pagination, autocomplete for delete, ephemeral responses
+ * Features: add with AI interpretation, pagination, autocomplete for delete, ephemeral responses
  */
 
 import type {
@@ -11,17 +11,22 @@ import type {
   ButtonInteraction,
   CommandHandlerPlugin,
   CommandInvocation,
+  ModalSubmitInteraction,
   PluginContext,
 } from '@core';
 import { registerCommand, unregisterCommand } from '@core';
+import { getBotConfig } from '@core/config';
 import {
   clearMemories,
   deleteMemory,
   getMemories,
+  getMemoryCount,
   getUserByPlatformId,
   type Memory,
   type MemoryType,
+  saveMemory,
 } from '@core/database';
+import { LLMClient } from '@core/llm-client';
 import { memoryCommand } from './command';
 
 // Emoji icons for memory types
@@ -58,9 +63,21 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
   readonly commands = ['memory'];
 
   private context!: PluginContext;
+  private llmClient?: LLMClient;
 
   async load(context: PluginContext): Promise<void> {
     this.context = context;
+
+    // Initialize LLM client for memory interpretation
+    const config = getBotConfig();
+    if (config?.tokens?.openrouter) {
+      this.llmClient = new LLMClient({
+        apiKey: config.tokens.openrouter,
+        defaultModel: config.ai?.defaultModel ?? 'anthropic/claude-sonnet-4-20250514',
+        defaultTemperature: 0.3,
+        defaultMaxTokens: 150,
+      });
+    }
 
     // Register the command definition
     registerCommand(memoryCommand, this.id);
@@ -69,6 +86,7 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
     context.eventBus.on('command:received', this.handleCommand.bind(this));
     context.eventBus.on('command:autocomplete', this.handleAutocomplete.bind(this));
     context.eventBus.on('interaction:button', this.handleButton.bind(this));
+    context.eventBus.on('interaction:modal', this.handleModalSubmit.bind(this));
 
     context.logger.info('Memory command plugin loaded');
   }
@@ -98,6 +116,9 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
     }
 
     switch (subcommand) {
+      case 'add':
+        await this.handleAdd(invocation, dbUser.id, guildId);
+        break;
       case 'list':
         await this.handleList(invocation, dbUser.id, guildId, (args.type as MemoryType) ?? null);
         break;
@@ -172,6 +193,182 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
       content,
       components,
     });
+  }
+
+  private async handleAdd(invocation: CommandInvocation, userId: number, guildId: string): Promise<void> {
+    // Check memory limit before showing modal
+    const { explicit } = getMemoryCount(userId, guildId);
+    if (explicit >= 50) {
+      await invocation.reply({
+        content: '❌ You have reached the maximum of 50 explicit memories. Use `/memory delete` to remove some first.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Show modal for memory entry
+    await invocation.showModal({
+      customId: 'memory_add_modal',
+      title: 'Add Memory',
+      fields: [
+        {
+          customId: 'memory_content',
+          label: 'What should I remember?',
+          style: 'paragraph',
+          placeholder: 'e.g., "I prefer dark mode" or "My timezone is EST"',
+          required: true,
+          minLength: 3,
+          maxLength: 500,
+        },
+        {
+          customId: 'memory_type',
+          label: 'Type (preference/fact/instruction/context)',
+          style: 'short',
+          placeholder: 'fact',
+          required: false,
+          maxLength: 20,
+        },
+      ],
+    });
+  }
+
+  private handleModalSubmit = async (interaction: ModalSubmitInteraction): Promise<void> => {
+    if (interaction.customId !== 'memory_add_modal') return;
+
+    const guildId = interaction.guildId;
+    if (!guildId) {
+      await interaction.reply({
+        content: '❌ This can only be used in a server.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const dbUser = getUserByPlatformId('discord', interaction.user.id);
+    if (!dbUser) {
+      await interaction.reply({
+        content: '❌ Could not find your user record. Please send a message first.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const content = interaction.fields.memory_content ?? '';
+    const typeInput = (interaction.fields.memory_type || 'fact').toLowerCase().trim();
+
+    if (!content) {
+      await interaction.reply({
+        content: '❌ Content is required.',
+        ephemeral: true,
+      });
+      return;
+    }
+
+    // Validate type
+    const validTypes = ['preference', 'fact', 'instruction', 'context'];
+    const type: MemoryType = validTypes.includes(typeInput) ? (typeInput as MemoryType) : 'fact';
+
+    // AI interpretation
+    let finalContent = content;
+    let wasInterpreted = false;
+
+    if (this.llmClient) {
+      try {
+        const interpreted = await this.interpretMemory(
+          content,
+          type,
+          interaction.user.displayName ?? interaction.user.name,
+        );
+        if (interpreted) {
+          finalContent = interpreted;
+          wasInterpreted = true;
+        }
+      } catch (error) {
+        this.context.logger.warn('[Memory] AI interpretation failed, using raw content', { error });
+      }
+    }
+
+    try {
+      const result = await saveMemory({
+        userId: dbUser.id,
+        guildId,
+        type,
+        content: finalContent,
+        source: 'explicit',
+      });
+
+      let response = result.updated
+        ? `🔄 **Memory updated!** (similar memory existed)\n\n`
+        : `✅ **Memory saved!**\n\n`;
+
+      response += `${TYPE_ICONS[type]} **${TYPE_NAMES[type]}**\n`;
+      response += `${finalContent}\n`;
+
+      if (wasInterpreted && finalContent !== content) {
+        response += `\n_Original: "${content}"_\n`;
+        response += `_Interpreted for clarity_`;
+      }
+
+      await interaction.reply({ content: response, ephemeral: true });
+
+      this.context.logger.info('[Memory] Added via modal', {
+        userId: dbUser.id,
+        guildId,
+        type,
+        interpreted: wasInterpreted,
+      });
+    } catch (error) {
+      this.context.logger.error('[Memory] Failed to save', { error });
+      await interaction.reply({
+        content: '❌ Failed to save memory. Please try again.',
+        ephemeral: true,
+      });
+    }
+  };
+
+  /**
+   * Use AI to rephrase user input into a clear, actionable memory
+   */
+  private async interpretMemory(input: string, type: MemoryType, username: string): Promise<string | null> {
+    if (!this.llmClient) return null;
+
+    const typeDescriptions: Record<MemoryType, string> = {
+      preference: 'a user preference (likes, dislikes, preferences)',
+      fact: 'a factual statement about the user',
+      instruction: 'an instruction for how to interact with the user',
+      context: 'current contextual information',
+    };
+
+    try {
+      const response = await this.llmClient.chat({
+        messages: [
+          {
+            role: 'system',
+            content: `You are a memory formatter. Rephrase user input into a clear, concise memory statement.
+
+Rules:
+- Output ONLY the rephrased memory, nothing else
+- Keep it concise (under 100 characters if possible)
+- Write in third person about the user (use "User" or their name)
+- Make it specific and actionable
+- Preserve the core meaning
+- If the input is already clear, you may return it unchanged
+
+Memory type: ${typeDescriptions[type]}
+User's name: ${username}`,
+          },
+          {
+            role: 'user',
+            content: input,
+          },
+        ],
+      });
+
+      const result = response.choices[0]?.message?.content?.trim();
+      return result && result.length > 0 && result.length < 500 ? result : null;
+    } catch {
+      return null;
+    }
   }
 
   private async handleList(

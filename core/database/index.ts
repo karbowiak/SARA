@@ -15,6 +15,22 @@ export {
   transaction,
 } from './client';
 export {
+  addKnowledge,
+  type CreateKnowledgeParams,
+  deleteKnowledge,
+  getGuildKnowledge,
+  getKnowledge,
+  getKnowledgeCount,
+  getKnowledgeTags,
+  getUnembeddedKnowledge,
+  type KnowledgeEntry,
+  type KnowledgeWithScore,
+  searchKnowledge,
+  searchKnowledgeByEmbedding,
+  storeKnowledgeEmbedding,
+  updateKnowledge,
+} from './knowledge';
+export {
   type CreateMemoryParams,
   clearMemories,
   deleteMemory,
@@ -32,7 +48,6 @@ export {
   searchMemories,
   updateMemory,
 } from './memories';
-
 export {
   getMessageCount,
   getRecentMessages,
@@ -55,6 +70,20 @@ export {
   reset,
   rollback,
 } from './migrator';
+export {
+  type CreateReminderInput,
+  cancelReminder,
+  cancelReminderByText,
+  createNextOccurrence,
+  createReminder,
+  getDueReminders,
+  getReminder,
+  getUserPendingReminders,
+  getUserReminderCount,
+  markReminderDelivered,
+  type Reminder,
+  snoozeReminder,
+} from './reminders';
 export {
   formatGroupsForLog,
   getCachedUserRoles,

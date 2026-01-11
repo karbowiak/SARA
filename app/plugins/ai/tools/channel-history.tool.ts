@@ -98,8 +98,8 @@ export class ChannelHistoryTool implements Tool {
 
       // Format messages for AI consumption (oldest first)
       const formatted = messages.reverse().map((m: StoredMessage) => ({
-        timestamp: new Date(m.timestamp).toISOString(),
-        user: m.user_name,
+        timestamp: new Date(m.created_at).toISOString(),
+        user: m.username ?? 'Unknown',
         isBot: Boolean(m.is_bot),
         content: m.content,
       }));

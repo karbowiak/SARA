@@ -27,6 +27,7 @@ export {
   type MemoryType,
   type SimilarMemory as SimilarMemoryResult,
   type StoredMemory,
+  type StoredMemory as Memory, // Alias for convenience
   saveMemory,
   searchMemories,
   updateMemory,

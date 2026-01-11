@@ -97,8 +97,9 @@ const config: BotConfig = {
   plugins: {
     ping: {},                           // Everyone can use
     memory: {},                         // Everyone can use
-    demo: { groups: ['admin'] },        // Admin only
-    admin: { groups: ['admin'] },       // Admin only
+    demo: { groups: ['admin'] },        // Admin group only
+    admin: { users: ['123456789'] },    // Specific user only
+    serveronly: { guilds: ['111222'] }, // Specific guild only
   },
   
   // Tool configuration (optional - loads all if omitted)
@@ -106,6 +107,7 @@ const config: BotConfig = {
     memory: {},                         // Everyone can use
     'web-search': {},                   // Everyone can use
     'channel-history': { groups: ['admin', 'moderator'] },
+    'dangerous-tool': { roles: ['789'], users: ['123'] }, // Role OR user
   },
 };
 
@@ -114,10 +116,15 @@ export default config;
 
 ### Access Control
 
-The `accessGroups` section maps group names to platform role IDs. Then `plugins` and `tools` sections specify which groups can use each feature:
+The `accessGroups` section maps group names to platform role IDs. The `plugins` and `tools` sections specify access rules:
 
+**Access Rule Types (OR'd together - any match grants access):**
 - **Empty object `{}`** = Everyone can use
-- **`{ groups: ['admin'] }`** = Only users with the admin group
+- **`{ groups: ['admin'] }`** = Users in the admin group (from accessGroups)
+- **`{ users: ['123456789'] }`** = Specific user IDs
+- **`{ roles: ['987654321'] }`** = Specific role IDs (platform-specific)
+- **`{ guilds: ['111222333'] }`** = Only in specific guilds/servers
+- **Combined**: `{ groups: ['admin'], users: ['123'] }` = Admin group OR specific user
 - **Not listed** = Not loaded at all
 
 User roles are automatically resolved and cached (24h TTL) when they send messages.
@@ -569,35 +576,49 @@ import {
 
 ## User Roles & Access Control
 
-The bot automatically tracks user roles and resolves them to access groups.
+The bot checks access at the adapter level before events reach plugins.
 
 ### How It Works
 
-1. **Config defines groups:** `accessGroups` maps group names to platform role IDs
-2. **User sends message:** Logger plugin caches their role IDs → resolved groups
-3. **AI tools filtered:** Before LLM call, tools are filtered based on user's groups
-4. **Cache refreshes:** 24h TTL, or immediately if roles change
+1. **Config defines rules:** `plugins` and `tools` sections define access rules
+2. **Adapter checks access:** Before emitting events, adapter checks user/role/guild
+3. **Access denied:** User gets ephemeral "permission denied" message
+4. **Access granted:** Event emitted, plugins handle normally
+
+### Access Context
+
+The adapter builds an `AccessContext` with:
+- `platform` - 'discord', 'slack', etc.
+- `userId` - User's platform ID
+- `roleIds` - User's role IDs (Discord roles, etc.)
+- `guildId` - Server/guild ID
 
 ### Checking Access in Code
 
 ```typescript
-import { checkAccess, getAccessibleTools } from '@core';
-import { getOrRefreshUserRoles, resolveRolesToGroups } from '@core/database';
+import { checkAccess, getAccessibleTools, type AccessContext } from '@core';
+
+// Build access context
+const context: AccessContext = {
+  platform: 'discord',
+  userId: user.id,
+  roleIds: user.roleIds,
+  guildId: message.guildId,
+};
 
 // Check if user has access to a feature
-const userGroups = resolveRolesToGroups(user.roleIds, 'discord', config);
-const hasAccess = checkAccess(featureAccess, userGroups);
+const hasAccess = checkAccess(featureAccess, context, config);
 
 // Get tools accessible to a user
-const accessibleTools = getAccessibleTools(allTools, toolAccessConfig, userGroups);
+const accessibleTools = getAccessibleTools(allTools, context, config);
 ```
 
 ### Terminal Output
 
 Messages are logged with resolved group names:
 ```
-[14:32:15] [Discord] Server/#general | User [admin, moderator]: hello
-[14:32:16] [Discord] Server/#general | OtherUser [everyone]: hi
+[14:32:15] Server/#general │ User [admin]: hello
+[14:32:16] Server/#general │ OtherUser [everyone]: hi
 ```
 
 ---

@@ -131,7 +131,7 @@ export default class PromptCommand extends Command {
     const recentMessages = getRecentMessages(channelId, 20);
     const historyMessages = recentMessages.reverse().map((msg) => {
       const isBot = Boolean(msg.is_bot);
-      const prefix = isBot ? '' : `@${msg.user_name}: `;
+      const prefix = isBot ? '' : `@${msg.username}: `;
       return `[${isBot ? 'assistant' : 'user'}] ${prefix}${msg.content}`;
     });
 

@@ -91,13 +91,13 @@ Returns timestamps for last seen and last message, plus message count.`,
 
     // Try to find by platform user ID first (for mentions)
     const platform = context.message.platform;
-    let user = getUserByPlatformId(platform, query);
+    let user: StoredUser | null = getUserByPlatformId(platform, query);
 
     // If not found, try searching
     if (!user) {
       const results = searchUsers(query, 1);
       if (results.length > 0) {
-        user = results[0];
+        user = results[0] ?? null;
       }
     }
 

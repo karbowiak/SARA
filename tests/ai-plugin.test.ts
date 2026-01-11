@@ -170,8 +170,12 @@ describe('AIPlugin', () => {
         await plugin.load(context);
 
         const typingEvents: unknown[] = [];
-        eventBus.on('typing:start', (event) => typingEvents.push({ type: 'start', ...event }));
-        eventBus.on('typing:stop', (event) => typingEvents.push({ type: 'stop', ...event }));
+        eventBus.on('typing:start', (event) => {
+          typingEvents.push({ type: 'start', ...event });
+        });
+        eventBus.on('typing:stop', (event) => {
+          typingEvents.push({ type: 'stop', ...event });
+        });
 
         const message = createMessage({ content: 'test' });
         await plugin.handle(message, context);

@@ -270,8 +270,9 @@ export default class BackfillCommand extends Command {
       platformMessageId: message.id,
       guildId: guildId,
       channelId: message.channel.id,
-      userId: message.author.id,
-      userName: message.author.displayName ?? message.author.username,
+      platformUserId: message.author.id,
+      username: message.author.username,
+      displayName: message.author.displayName ?? message.author.username,
       content: message.content,
       isBot: message.author.bot,
       timestamp: message.createdAt,
@@ -319,7 +320,7 @@ export default class BackfillCommand extends Command {
       console.log('\n📁 Select a guild:');
       console.log('  0) All guilds');
       for (let i = 0; i < guilds.length; i++) {
-        const g = guilds[i];
+        const g = guilds[i]!;
         console.log(`  ${i + 1}) ${g.name} (${g.memberCount} members)`);
       }
 
@@ -348,7 +349,7 @@ export default class BackfillCommand extends Command {
         console.log(`\n📝 Select a channel in ${selectedGuild.name}:`);
         console.log('  0) All channels');
         for (let i = 0; i < channels.length; i++) {
-          console.log(`  ${i + 1}) #${channels[i].name}`);
+          console.log(`  ${i + 1}) #${channels[i]!.name}`);
         }
 
         const channelChoice = await this.prompt(`\nEnter choice [0-${channels.length}]: `);

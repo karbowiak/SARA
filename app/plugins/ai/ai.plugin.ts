@@ -266,7 +266,7 @@ export class AIPlugin implements MessageHandlerPlugin {
     };
 
     // Filter tools by access
-    return getAccessibleTools(config, this.loadedTools.all, accessContext);
+    return getAccessibleTools(this.loadedTools.all, accessContext, config);
   }
 
   /**
@@ -634,7 +634,7 @@ ${lines.join('\n')}`;
     // Get final response after tool execution
     context.logger.debug('Getting final response after tool calls');
     const response = await this.llm.chat({ messages });
-    const content = response.choices[0]?.message.content;
+    const content = response.choices[0]?.message.content ?? null;
 
     if (content) {
       await this.sendResponse(message, content, context);

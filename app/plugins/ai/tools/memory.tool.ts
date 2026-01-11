@@ -25,7 +25,7 @@ export class MemoryTool implements Tool {
     version: '1.0.0',
     author: 'system',
     keywords: ['remember', 'memory', 'save', 'recall', 'forget', 'preference', 'fact'],
-    category: 'memory',
+    category: 'utility',
     priority: 9,
   };
 

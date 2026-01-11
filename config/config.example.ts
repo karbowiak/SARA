@@ -10,161 +10,421 @@
 import type { BotConfig } from '@core';
 
 const config: BotConfig = {
-  /**
-   * API Keys and Tokens (REQUIRED)
-   */
+  // ============================================
+  // API TOKENS (Required)
+  // ============================================
   tokens: {
-    /** Discord bot token from Discord Developer Portal */
+    /**
+     * Discord bot token
+     * Get from: https://discord.com/developers/applications
+     */
     discord: 'YOUR_DISCORD_BOT_TOKEN',
 
-    /** OpenRouter API key for LLM access */
+    /**
+     * OpenRouter API key for LLM access
+     * Get from: https://openrouter.ai/keys
+     */
     openrouter: 'YOUR_OPENROUTER_API_KEY',
 
-    /** Tavily API key for web search (optional) */
+    /**
+     * Tavily API key for web search (optional)
+     * Get from: https://tavily.com/
+     * If not provided, web_search tool won't work
+     */
     tavily: 'YOUR_TAVILY_API_KEY',
   },
 
-  /**
-   * Bot identity
-   */
+  // ============================================
+  // BOT IDENTITY
+  // ============================================
   bot: {
-    /** Display name (platform-specific, may differ from identity) */
+    /**
+     * Display name shown in logs and some contexts
+     * This might differ from the Discord bot username
+     */
     name: 'MyBot',
 
-    /** True identity name used in prompts (optional) */
+    /**
+     * Identity name used in AI prompts
+     * The AI will refer to itself by this name
+     * Can be different from `name` (e.g., Discord name "Tim" but identity "Sara")
+     */
     identity: 'MyBot',
 
-    /** Bot's self-description */
+    /**
+     * Brief description of the bot's purpose
+     */
     description: 'A helpful assistant',
 
-    /** Developer/owner info */
+    /**
+     * Developer/owner name (shown in some contexts)
+     */
     developer: 'Your Name',
 
-    /** Project attribution (optional) */
+    /**
+     * Project name (optional, for attribution)
+     */
     project: 'My Bot Project',
   },
 
-  /**
-   * AI behavior configuration
-   */
+  // ============================================
+  // AI BEHAVIOR
+  // ============================================
   ai: {
-    /** Default model (see OpenRouter for available models) */
-    defaultModel: 'anthropic/claude-3.5-sonnet',
+    /**
+     * Default LLM model to use
+     * See OpenRouter docs for available models:
+     * https://openrouter.ai/docs#models
+     *
+     * Popular options:
+     * - 'anthropic/claude-sonnet-4-20250514' (Claude Sonnet 4 - balanced)
+     * - 'anthropic/claude-opus-4-20250514' (Claude Opus 4 - most capable)
+     * - 'openai/gpt-4o' (GPT-4o - fast multimodal)
+     * - 'openai/gpt-4-turbo' (GPT-4 Turbo)
+     * - 'google/gemini-pro-1.5' (Gemini 1.5 Pro)
+     * - 'x-ai/grok-3-latest' (Grok 3)
+     * - 'meta-llama/llama-3.1-405b-instruct' (Llama 3.1 405B)
+     */
+    defaultModel: 'anthropic/claude-sonnet-4-20250514',
 
-    /** Temperature (0-2, lower = more deterministic) */
+    /**
+     * Temperature (0.0 - 2.0)
+     * Lower = more deterministic/focused
+     * Higher = more creative/random
+     *
+     * Recommendations:
+     * - 0.0-0.3: Factual, code, math
+     * - 0.5-0.7: General chat (default)
+     * - 0.8-1.2: Creative writing
+     */
     temperature: 0.7,
 
-    /** Maximum tokens in response */
+    /**
+     * Maximum tokens in AI response
+     * Higher = longer possible responses but more cost
+     * Most models support 4096-8192, some up to 128k
+     */
     maxTokens: 4096,
   },
 
-  /**
-   * Personality and system prompt configuration
-   */
+  // ============================================
+  // PERSONALITY (System Prompt)
+  // ============================================
   personality: {
     /**
-     * Core identity - the main "You are..." section
+     * Core identity prompt
+     * The main "You are..." section that defines who the bot is
      */
     identity: 'You are a helpful assistant in a Discord server.',
 
     /**
-     * Personality traits and style (optional)
+     * Personality traits and behavioral style (optional)
+     * Markdown formatted description of how the bot should behave
      */
     traits: `## Personality
 - Friendly and helpful
 - Uses clear, concise language
-- Adapts tone to the conversation`,
+- Adapts tone to match the conversation`,
 
     /**
-     * Behavioral guidelines
+     * Specific behavioral guidelines
+     * Array of rules the AI should follow
      */
     guidelines: [
       'Answer questions directly and completely',
       'Use markdown formatting when helpful',
       'Be conversational but not overly chatty',
+      'Never end responses with follow-up questions unless clarification is needed',
     ],
 
     /**
      * Tone descriptors
+     * Short words describing the communication style
      */
     tone: ['friendly', 'helpful', 'professional'],
 
     /**
-     * Restrictions
+     * Hard restrictions
+     * Things the bot must never do
      */
     restrictions: ['Never pretend to be a human when directly asked', 'Never generate harmful or illegal content'],
 
     /**
-     * Image generation rules (optional, for future image tools)
+     * Image generation rules (optional)
+     * If you add image generation tools, put safety rules here
      */
     imageRules: undefined,
 
     /**
-     * Custom instructions appended to prompt (optional)
+     * Custom instructions (optional)
+     * Additional instructions appended to the system prompt
      */
     customInstructions: undefined,
   },
 
+  // ============================================
+  // ACCESS GROUPS (Optional)
+  // ============================================
   /**
-   * Access Groups (optional)
-   *
    * Define named groups that map to platform-specific role/user IDs.
-   * These are used to control access to plugins and tools.
-   * If not defined, all features are available to everyone.
+   * These groups are referenced in plugins/tools access config.
+   *
+   * If not defined or empty, group-based access control is disabled.
+   *
+   * To get Discord role IDs:
+   * 1. Enable Developer Mode in Discord Settings > Advanced
+   * 2. Right-click a role in Server Settings > Roles → Copy ID
+   *
+   * To get Discord user IDs:
+   * 1. Enable Developer Mode
+   * 2. Right-click a user → Copy ID
    */
   accessGroups: {
+    /**
+     * Admin group - highest access level
+     * Usually server owners and trusted admins
+     */
     admin: {
-      discord: ['YOUR_ADMIN_ROLE_ID'],
+      discord: [
+        '111111111111111111', // Admin role ID
+      ],
     },
+
+    /**
+     * Moderator group - elevated access
+     * Include admin role so admins also have mod access
+     */
     moderator: {
-      discord: ['YOUR_MODERATOR_ROLE_ID'],
+      discord: [
+        '111111111111111111', // Admin role (admins are also mods)
+        '222222222222222222', // Moderator role ID
+      ],
     },
-    // Add more groups as needed
+
+    /**
+     * VIP/Premium group - special users
+     */
+    vip: {
+      discord: [
+        '333333333333333333', // VIP role ID
+        '444444444444444444', // Booster role ID
+      ],
+    },
+
+    /**
+     * Trusted group - verified members
+     */
+    trusted: {
+      discord: [
+        '111111111111111111', // Admin
+        '222222222222222222', // Moderator
+        '333333333333333333', // VIP
+        '555555555555555555', // Verified role ID
+      ],
+    },
   },
 
+  // ============================================
+  // PLUGINS TO LOAD
+  // ============================================
   /**
-   * Plugins to load
+   * Configure which plugins to load and their access rules.
    *
-   * Key: plugin ID (matches the `id` property in the plugin class)
-   * Value: access configuration
-   *   - {} = everyone can use
-   *   - { groups: ['admin'] } = only admin group
-   *   - { subcommands: { clear: { groups: ['admin'] } } } = subcommand-level access
+   * Key: Plugin ID (matches the `id` property in the plugin class)
+   * Value: Access configuration object
    *
-   * Plugins not listed here are NOT loaded.
+   * ACCESS CONFIGURATION OPTIONS:
+   * - {} = Everyone can use (no restrictions)
+   * - { groups: ['admin'] } = Only users in named groups (from accessGroups)
+   * - { users: ['123...'] } = Only specific user IDs
+   * - { roles: ['456...'] } = Only users with specific role IDs
+   * - { guilds: ['789...'] } = Only in specific guild/server IDs
+   *
+   * Multiple conditions are OR'd - if ANY match, access is granted.
+   * Example: { groups: ['admin'], users: ['123'] } = admin group OR user 123
+   *
+   * IMPORTANT: Plugins not listed here are NOT loaded at all.
    */
   plugins: {
-    // Message handlers
+    // ============================================
+    // Message Handlers
+    // ============================================
+
+    /**
+     * AI plugin - responds to @mentions with AI
+     *
+     * Examples:
+     * - {} = Everyone can use
+     * - { groups: ['trusted'] } = Only trusted users
+     * - { guilds: ['123...'] } = Only in specific server
+     */
     ai: {},
+
+    /**
+     * Logger plugin - logs all messages to console/database
+     * Should always be {} so all messages are logged for context
+     */
     logger: {},
 
-    // Slash commands
+    // ============================================
+    // Slash Commands
+    // ============================================
+
+    /**
+     * /ping - Simple latency test
+     */
     ping: {},
-    demo: { groups: ['admin'] },
+
+    /**
+     * /demo - Demonstrates bot features
+     * Restricted to admin group
+     */
+    demo: {
+      groups: ['admin'],
+    },
+
+    /**
+     * /memory - View/manage user memories
+     * Uses subcommand-level access control
+     */
     memory: {
+      // Subcommand-specific access (overrides parent)
       subcommands: {
-        list: {},
-        delete: {},
-        clear: { groups: ['admin'] },
+        list: {}, // Everyone
+        delete: {}, // Everyone
+        clear: { groups: ['admin'] }, // Admin only
       },
     },
+
+    // ============================================
+    // More Examples (commented out)
+    // ============================================
+
+    /**
+     * Example: Restrict to specific user IDs
+     * Only these users can use the command
+     */
+    // ownerOnly: {
+    //   users: [
+    //     '123456789012345678', // Your user ID
+    //     '234567890123456789', // Co-owner user ID
+    //   ],
+    // },
+
+    /**
+     * Example: Restrict to specific guilds/servers
+     * Command only works in these servers
+     */
+    // privateServer: {
+    //   guilds: [
+    //     '111222333444555666', // Main server
+    //     '222333444555666777', // Test server
+    //   ],
+    // },
+
+    /**
+     * Example: Restrict by role ID directly
+     * Bypasses accessGroups, checks role IDs directly
+     */
+    // premiumFeature: {
+    //   roles: [
+    //     '999888777666555444', // Premium role ID
+    //     '888777666555444333', // Legacy premium role ID
+    //   ],
+    // },
+
+    /**
+     * Example: Multiple conditions (OR'd together)
+     * Access granted if ANY condition matches
+     */
+    // flexibleAccess: {
+    //   groups: ['admin'],                // Admin group members
+    //   users: ['123456789012345678'],    // OR this specific user
+    //   roles: ['999888777666555444'],    // OR anyone with this role
+    //   guilds: ['111222333444555666'],   // OR anyone in this guild
+    // },
+
+    /**
+     * Example: Guild + Role restriction (AND-like behavior)
+     * To require BOTH conditions, use roles within a specific guild
+     * (User must have the role AND be in a guild where it exists)
+     */
+    // guildSpecificRole: {
+    //   roles: ['999888777666555444'], // Role only exists in certain guilds
+    // },
   },
 
+  // ============================================
+  // AI TOOLS TO LOAD
+  // ============================================
   /**
-   * AI Tools to load
+   * Configure which AI tools to load and their access rules.
    *
-   * Key: tool name (matches the `metadata.name` property in the tool class)
-   * Value: access configuration
-   *   - {} = everyone can use (AI can call for any user)
-   *   - { groups: ['moderator'] } = AI can only call for users in moderator group
+   * Key: Tool name (matches `metadata.name` in the tool class)
+   * Value: Access configuration object (same format as plugins)
    *
-   * Tools not listed here are NOT loaded.
+   * Tools are filtered PER-USER before the AI sees them.
+   * If a user doesn't have access, the AI won't know the tool exists.
+   *
+   * IMPORTANT: Tools not listed here are NOT loaded at all.
    */
   tools: {
+    /**
+     * memory - Save/recall user preferences and facts
+     */
     memory: {},
+
+    /**
+     * channel_history - Search message history in current channel
+     */
     channel_history: {},
+
+    /**
+     * web_search - Search the web via Tavily
+     * Requires tavily token in tokens config
+     */
     web_search: {},
+
+    /**
+     * last_seen - Check when a user was last active
+     */
     last_seen: {},
+
+    // ============================================
+    // More Examples (commented out)
+    // ============================================
+
+    /**
+     * Example: Admin-only tool
+     * Only admins can trigger this tool via AI
+     */
+    // dangerous_action: {
+    //   groups: ['admin'],
+    // },
+
+    /**
+     * Example: Guild-restricted tool
+     * Tool only available in specific servers
+     */
+    // private_data: {
+    //   guilds: ['111222333444555666'],
+    // },
+
+    /**
+     * Example: VIP feature
+     * Premium/VIP users get access to special tools
+     */
+    // premium_search: {
+    //   groups: ['vip'],
+    // },
+
+    /**
+     * Example: Moderator tool
+     * Mods and admins can use moderation tools
+     */
+    // mod_lookup: {
+    //   groups: ['moderator'], // Remember: admins are in moderator group too
+    // },
   },
 };
 

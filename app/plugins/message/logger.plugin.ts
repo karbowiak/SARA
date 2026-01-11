@@ -11,6 +11,7 @@
  */
 
 import type { BotConfig, BotMessage, MessageHandlerPlugin, PluginContext } from '@core';
+import { getBotConfig } from '@core';
 import {
   formatGroupsForLog,
   getOrRefreshUserRoles,
@@ -32,7 +33,7 @@ export class LoggerPlugin implements MessageHandlerPlugin {
 
   async load(context: PluginContext): Promise<void> {
     this.context = context;
-    this.config = context.config;
+    this.config = getBotConfig();
     // Embedder is initialized at startup by discord command
     // Just verify it's ready
     if (isEmbedderReady()) {
@@ -116,22 +117,38 @@ export class LoggerPlugin implements MessageHandlerPlugin {
   }
 
   /**
-   * Log message to terminal in a readable format
+   * Log message to terminal in a readable format with colors
    */
   private logToTerminal(message: BotMessage, groups: string[]): void {
     const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
-    const platform = message.platform.charAt(0).toUpperCase() + message.platform.slice(1);
     const guild = message.guildId ? (message.guildName ?? message.guildId) : 'DM';
     const channel = message.channel.name ?? message.channel.id;
     const user = message.author.displayName ?? message.author.name;
-    const bot = message.author.isBot ? ' [BOT]' : '';
     const groupLabel = message.author.isBot ? '' : ` [${formatGroupsForLog(groups)}]`;
 
     // Truncate long messages for terminal display
     const content = message.content.length > 200 ? `${message.content.substring(0, 200)}...` : message.content;
 
-    // Format: [HH:MM:SS] [Platform] Guild/#channel | User [groups]: message
-    console.log(`[${timestamp}] [${platform}] ${guild}/#${channel} | ${user}${bot}${groupLabel}: ${content}`);
+    // ANSI colors
+    const dim = '\x1b[2m';
+    const reset = '\x1b[0m';
+    const cyan = '\x1b[36m';
+    const yellow = '\x1b[33m';
+    const blue = '\x1b[34m';
+    const magenta = '\x1b[35m';
+    const white = '\x1b[37m';
+
+    // Bot messages in magenta, user messages in cyan
+    const userColor = message.author.isBot ? magenta : cyan;
+    const botTag = message.author.isBot ? `${magenta}[BOT]${reset} ` : '';
+
+    // Format: [HH:MM:SS] Guild/#channel | User [groups]: message
+    console.log(
+      `${dim}[${timestamp}]${reset} ` +
+        `${yellow}${guild}${reset}${dim}/${reset}${blue}#${channel}${reset} ` +
+        `${dim}│${reset} ${userColor}${user}${reset} ${botTag}${dim}${groupLabel}${reset}` +
+        `${dim}:${reset} ${white}${content}${reset}`,
+    );
   }
 }
 

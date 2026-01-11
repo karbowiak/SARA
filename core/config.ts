@@ -91,10 +91,20 @@ export type AccessGroups = Record<string, PlatformAccess>;
  * Access configuration for a single feature (plugin/tool)
  * Empty object {} = everyone can use
  * { groups: ['admin'] } = only admin group
+ * { users: ['123'] } = only specific user IDs
+ * { guilds: ['456'] } = only in specific guilds
+ * { roles: ['789'] } = only users with specific role IDs
+ * Multiple conditions are OR'd together (any match = access granted)
  */
 export interface FeatureAccess {
-  /** Groups that can access this feature (empty/undefined = everyone) */
+  /** Groups that can access this feature (from accessGroups config) */
   groups?: string[];
+  /** Specific user IDs that can access this feature */
+  users?: string[];
+  /** Specific guild IDs where this feature can be used */
+  guilds?: string[];
+  /** Specific role IDs that can access this feature (platform-specific) */
+  roles?: string[];
   /** Subcommand-level access for slash commands */
   subcommands?: Record<string, FeatureAccess>;
 }
@@ -145,52 +155,96 @@ export interface AccessContext {
   roleIds?: string[];
   /** User ID */
   userId?: string;
+  /** Guild/Server ID */
+  guildId?: string;
+}
+
+/**
+ * Check if a feature access config has any restrictions
+ */
+function hasRestrictions(featureAccess: FeatureAccess): boolean {
+  return !!(
+    (featureAccess.groups && featureAccess.groups.length > 0) ||
+    (featureAccess.users && featureAccess.users.length > 0) ||
+    (featureAccess.guilds && featureAccess.guilds.length > 0) ||
+    (featureAccess.roles && featureAccess.roles.length > 0)
+  );
 }
 
 /**
  * Check if a user has access to a feature based on config
  *
- * @param config - Bot configuration
+ * Access rules are OR'd together - if ANY condition matches, access is granted.
+ * Empty {} = everyone has access.
+ *
  * @param featureAccess - The feature's access configuration
- * @param context - User's access context (platform, roles)
+ * @param context - User's access context (platform, roles, userId, guildId)
+ * @param config - Bot configuration (optional, for group resolution)
  * @returns true if user has access, false otherwise
  */
 export function checkAccess(
-  config: BotConfig,
   featureAccess: FeatureAccess | undefined,
   context: AccessContext,
+  config?: BotConfig,
 ): boolean {
-  // No access config or empty groups = everyone has access
-  if (!featureAccess || !featureAccess.groups || featureAccess.groups.length === 0) {
+  // No access config = everyone has access
+  if (!featureAccess) {
     return true;
   }
 
-  // No access groups defined in config = access control disabled, everyone has access
-  if (!config.accessGroups) {
+  // Empty config (no restrictions) = everyone has access
+  if (!hasRestrictions(featureAccess)) {
     return true;
   }
 
-  // Check if user belongs to any of the required groups
-  for (const groupName of featureAccess.groups) {
-    const group = config.accessGroups[groupName];
-    if (!group) continue;
+  // Check direct user ID match
+  if (featureAccess.users && featureAccess.users.length > 0) {
+    if (context.userId && featureAccess.users.includes(context.userId)) {
+      return true;
+    }
+  }
 
-    // Get platform-specific IDs for this group
-    const platformIds = group[context.platform as keyof PlatformAccess];
-    if (!platformIds || platformIds.length === 0) continue;
+  // Check guild restriction
+  if (featureAccess.guilds && featureAccess.guilds.length > 0) {
+    if (context.guildId && featureAccess.guilds.includes(context.guildId)) {
+      return true;
+    }
+  }
 
-    // Check if any of user's roles match
+  // Check direct role ID match
+  if (featureAccess.roles && featureAccess.roles.length > 0) {
     if (context.roleIds) {
       for (const roleId of context.roleIds) {
-        if (platformIds.includes(roleId)) {
+        if (featureAccess.roles.includes(roleId)) {
           return true;
         }
       }
     }
+  }
 
-    // Also check user ID directly (for Slack user-based access)
-    if (context.userId && platformIds.includes(context.userId)) {
-      return true;
+  // Check group membership (requires config with accessGroups)
+  if (featureAccess.groups && featureAccess.groups.length > 0 && config?.accessGroups) {
+    for (const groupName of featureAccess.groups) {
+      const group = config.accessGroups[groupName];
+      if (!group) continue;
+
+      // Get platform-specific IDs for this group
+      const platformIds = group[context.platform as keyof PlatformAccess];
+      if (!platformIds || platformIds.length === 0) continue;
+
+      // Check if any of user's roles match
+      if (context.roleIds) {
+        for (const roleId of context.roleIds) {
+          if (platformIds.includes(roleId)) {
+            return true;
+          }
+        }
+      }
+
+      // Also check user ID directly (for Slack user-based access)
+      if (context.userId && platformIds.includes(context.userId)) {
+        return true;
+      }
     }
   }
 
@@ -201,35 +255,35 @@ export function checkAccess(
  * Check access to a specific subcommand
  */
 export function checkSubcommandAccess(
-  config: BotConfig,
   featureAccess: FeatureAccess | undefined,
   subcommand: string,
   context: AccessContext,
+  config?: BotConfig,
 ): boolean {
   // First check if there's subcommand-specific access
   if (featureAccess?.subcommands?.[subcommand]) {
-    return checkAccess(config, featureAccess.subcommands[subcommand], context);
+    return checkAccess(featureAccess.subcommands[subcommand], context, config);
   }
 
   // Fall back to parent feature access
-  return checkAccess(config, featureAccess, context);
+  return checkAccess(featureAccess, context, config);
 }
 
 /**
  * Get list of tools accessible to a user
  */
-export function getAccessibleTools(config: BotConfig, allTools: Tool[], context: AccessContext): Tool[] {
-  if (!config.tools) return [];
+export function getAccessibleTools(allTools: Tool[], context: AccessContext, config?: BotConfig): Tool[] {
+  if (!config?.tools) return allTools; // No config = all tools accessible
 
   return allTools.filter((tool) => {
     const toolName = tool.metadata.name;
     const toolAccess = config.tools?.[toolName];
 
-    // Tool not in config = not loaded
+    // Tool not in config = not loaded (shouldn't happen if tool loader filtered)
     if (toolAccess === undefined) return false;
 
     // Check access
-    return checkAccess(config, toolAccess, context);
+    return checkAccess(toolAccess, context, config);
   });
 }
 

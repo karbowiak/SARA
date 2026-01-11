@@ -397,6 +397,7 @@ function createTestCommand() {
     reply: async () => {},
     defer: async () => {},
     followUp: async () => {},
+    showModal: async () => {},
   };
 }
 

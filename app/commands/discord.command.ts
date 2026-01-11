@@ -1,5 +1,6 @@
 import {
   Command,
+  checkAccess,
   createEventBus,
   getBotConfig,
   type Logger,
@@ -95,6 +96,26 @@ export default class DiscordCommand extends Command {
         // Check all restrictions (scope, platform, guild)
         if (!shouldHandlerProcess(handler, message)) continue;
 
+        // Check access control (skip for bots to avoid blocking logger)
+        if (!message.author.isBot) {
+          const accessConfig = plugins.accessConfig.get(handler.id);
+          if (accessConfig) {
+            const accessContext = {
+              platform: message.platform,
+              userId: message.author.id,
+              roleIds: message.author.roleIds,
+              guildId: message.guildId,
+            };
+            if (!checkAccess(accessConfig, accessContext, config)) {
+              logger.debug(`User ${message.author.name} denied access to plugin ${handler.id}`, {
+                userId: message.author.id,
+                guildId: message.guildId,
+              });
+              continue;
+            }
+          }
+        }
+
         // Check plugin's own shouldHandle logic
         if (!handler.shouldHandle(message)) continue;
 
@@ -108,8 +129,38 @@ export default class DiscordCommand extends Command {
       }
     });
 
+    // Log slash command usage with colors
+    eventBus.on('command:received', (invocation) => {
+      const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+      const user = invocation.user.displayName ?? invocation.user.name;
+      const command = invocation.subcommand
+        ? `/${invocation.commandName} ${invocation.subcommand}`
+        : `/${invocation.commandName}`;
+      const args = Object.keys(invocation.args).length > 0 ? ` ${JSON.stringify(invocation.args)}` : '';
+
+      // ANSI colors
+      const dim = '\x1b[2m';
+      const reset = '\x1b[0m';
+      const green = '\x1b[32m';
+      const cyan = '\x1b[36m';
+      const white = '\x1b[37m';
+
+      console.log(
+        `${dim}[${timestamp}]${reset} ` +
+          `${green}⚡ COMMAND${reset} ${dim}│${reset} ` +
+          `${cyan}${user}${reset}${dim}:${reset} ` +
+          `${white}${command}${reset}${dim}${args}${reset}`,
+      );
+    });
+
     // Create and connect Discord adapter
-    const adapter = new DiscordAdapter({ token: config.tokens.discord, eventBus, logger });
+    const adapter = new DiscordAdapter({
+      token: config.tokens.discord,
+      eventBus,
+      logger,
+      config,
+      pluginAccess: plugins.accessConfig,
+    });
 
     // Register slash commands when bot is ready
     eventBus.once('bot:ready', async () => {

@@ -5,6 +5,7 @@
 import type {
   AutocompleteRequest,
   BotChannel,
+  BotConfig,
   BotEmbed,
   BotMessage,
   BotUser,
@@ -12,11 +13,12 @@ import type {
   CommandInvocation,
   CommandResponse,
   EventBus,
+  FeatureAccess,
   Logger,
   ModalSubmitInteraction,
   SelectMenuInteraction,
 } from '@core';
-import { getCommandRegistry } from '@core';
+import { checkAccess, getCommandRegistry } from '@core';
 import {
   type AutocompleteInteraction,
   type ChatInputCommandInteraction,
@@ -36,6 +38,9 @@ export interface DiscordAdapterOptions {
   token: string;
   eventBus: EventBus;
   logger: Logger;
+  config?: BotConfig;
+  /** Access config for plugins (plugin ID → access rules) */
+  pluginAccess?: Map<string, FeatureAccess>;
 }
 
 /**
@@ -47,10 +52,14 @@ export class DiscordAdapter {
   private client: Client;
   private eventBus: EventBus;
   private logger: Logger;
+  private config?: BotConfig;
+  private pluginAccess: Map<string, FeatureAccess>;
 
   constructor(options: DiscordAdapterOptions) {
     this.eventBus = options.eventBus;
     this.logger = options.logger;
+    this.config = options.config;
+    this.pluginAccess = options.pluginAccess ?? new Map();
 
     this.client = new Client({
       intents: [
@@ -425,6 +434,45 @@ export class DiscordAdapter {
       },
     };
 
+    // Check access control before emitting event
+    const accessConfig = this.pluginAccess.get(interaction.commandName);
+    if (accessConfig) {
+      // Get user's role IDs from guild member
+      const roleIds = interaction.member?.roles
+        ? Array.isArray(interaction.member.roles)
+          ? interaction.member.roles
+          : [...interaction.member.roles.cache.keys()]
+        : [];
+
+      const accessContext = {
+        platform: 'discord' as const,
+        userId: interaction.user.id,
+        roleIds,
+        guildId: interaction.guildId ?? undefined,
+      };
+
+      // Check subcommand-specific access if applicable
+      let effectiveAccess = accessConfig;
+      if (subcommand && accessConfig.subcommands?.[subcommand]) {
+        effectiveAccess = accessConfig.subcommands[subcommand];
+      }
+
+      if (!checkAccess(effectiveAccess, accessContext, this.config)) {
+        // Deny access with ephemeral message
+        const commandPath = subcommand ? `/${interaction.commandName} ${subcommand}` : `/${interaction.commandName}`;
+        interaction.reply({
+          content: `❌ You do not have permission to use ${commandPath}.`,
+          flags: MessageFlags.Ephemeral,
+        });
+        this.logger.debug(`Access denied for command ${commandPath}`, {
+          user: interaction.user.username,
+          userId: interaction.user.id,
+          guildId: interaction.guildId,
+        });
+        return;
+      }
+    }
+
     this.eventBus.fire('command:received', invocation);
   }
 
@@ -552,7 +600,9 @@ export class DiscordAdapter {
     // Extract field values
     const fields: Record<string, string> = {};
     for (const [key, component] of interaction.fields.fields) {
-      fields[key] = component.value;
+      if ('value' in component) {
+        fields[key] = component.value;
+      }
     }
 
     const modalInteraction: ModalSubmitInteraction = {
@@ -687,7 +737,9 @@ export class DiscordAdapter {
     try {
       const discordCommands = commands.map((cmd) => this.transformCommand(cmd));
 
-      await this.client.application?.commands.set(discordCommands);
+      await this.client.application?.commands.set(
+        discordCommands as unknown as Parameters<typeof this.client.application.commands.set>[0],
+      );
 
       this.logger.info(`Registered ${commands.length} slash command(s)`, {
         commands: commands.map((c) => c.name),

@@ -41,6 +41,10 @@ export interface BotIdentityConfig {
 export interface AIBehaviorConfig {
   /** Default model to use */
   defaultModel?: string;
+  /** Model for image generation */
+  imageModel?: string;
+  /** Model for deep reasoning/thinking */
+  reasoningModel?: string;
   /** Temperature for responses (0-2) */
   temperature?: number;
   /** Maximum tokens in response */

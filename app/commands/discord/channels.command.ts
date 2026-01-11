@@ -4,7 +4,7 @@
  * Usage: bun cli discord:channels [--guild=<id>]
  */
 
-import { Command } from '@core';
+import { Command, getBotConfig } from '@core';
 import { ChannelType, Client, GatewayIntentBits } from 'discord.js';
 
 export default class ChannelsCommand extends Command {
@@ -20,9 +20,9 @@ export default class ChannelsCommand extends Command {
     const guildFilter = this.option('guild') as string | undefined;
     const asJson = this.option('json') as boolean;
 
-    const token = process.env.DISCORD_BOT_TOKEN;
+    const token = getBotConfig()?.tokens?.discord;
     if (!token) {
-      this.error('DISCORD_BOT_TOKEN not set in environment');
+      this.error('Discord token not configured in config file');
       return 1;
     }
 

@@ -4,7 +4,7 @@
  * Usage: bun cli discord:guilds
  */
 
-import { Command } from '@core';
+import { Command, getBotConfig } from '@core';
 import { Client, GatewayIntentBits } from 'discord.js';
 
 export default class GuildsCommand extends Command {
@@ -18,9 +18,9 @@ export default class GuildsCommand extends Command {
   async handle(): Promise<number> {
     const asJson = this.option('json') as boolean;
 
-    const token = process.env.DISCORD_BOT_TOKEN;
+    const token = getBotConfig()?.tokens?.discord;
     if (!token) {
-      this.error('DISCORD_BOT_TOKEN not set in environment');
+      this.error('Discord token not configured in config file');
       return 1;
     }
 

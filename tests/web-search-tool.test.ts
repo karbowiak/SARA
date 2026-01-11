@@ -85,6 +85,12 @@ describe('WebSearchTool', () => {
         user: { id: 'user-1', name: 'Test', isBot: false },
         channel: { id: 'channel-1', type: 'guild' },
         logger,
+        eventBus: {
+          on: mock(() => {}),
+          off: mock(() => {}),
+          emit: mock(() => Promise.resolve()),
+          fire: mock(() => {}),
+        } as any,
       };
     });
 

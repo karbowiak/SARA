@@ -1,40 +1,42 @@
 /**
- * Embedder - Local embedding model using transformers.js
+ * Embedder - OpenAI embeddings via OpenRouter API
  *
- * Uses the BGE-small-en model for generating text embeddings.
- * Same model as SARA v2 for consistency.
+ * Uses text-embedding-3-large for high-quality multilingual embeddings.
  */
 
-import { type FeatureExtractionPipeline, pipeline } from '@xenova/transformers';
+import { getBotConfig } from './config';
 
-const MODEL_NAME = 'Xenova/bge-small-en-v1.5';
-const EMBEDDING_DIM = 384;
+const DEFAULT_MODEL = 'openai/text-embedding-3-large';
+const EMBEDDING_DIM = 3072;
 
-let embedder: FeatureExtractionPipeline | null = null;
-let isLoading = false;
-let loadPromise: Promise<FeatureExtractionPipeline> | null = null;
+// Cache config to avoid repeated lookups
+let cachedApiKey: string | null = null;
 
 /**
- * Get or initialize the embedding pipeline
+ * Get the OpenRouter API key
  */
-async function getEmbedder(): Promise<FeatureExtractionPipeline> {
-  if (embedder) return embedder;
-
-  if (loadPromise) return loadPromise;
-
-  isLoading = true;
-  loadPromise = pipeline('feature-extraction', MODEL_NAME, {
-    quantized: true, // Use quantized model for faster inference
-  });
-
-  embedder = await loadPromise;
-  isLoading = false;
-
-  return embedder;
+function getApiKey(): string | null {
+  if (cachedApiKey) return cachedApiKey;
+  const config = getBotConfig();
+  cachedApiKey = config?.tokens?.openrouter ?? null;
+  return cachedApiKey;
 }
 
 /**
- * Warm up the embedding model (load into memory)
+ * Initialize the embedder (no-op for API-based embeddings)
+ * Kept for backwards compatibility
+ */
+export async function initEmbedder(): Promise<void> {
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    console.warn('OpenRouter API key not configured - embeddings will not work');
+    return;
+  }
+  console.log(`Embedder ready: ${DEFAULT_MODEL} (${EMBEDDING_DIM} dimensions)`);
+}
+
+/**
+ * Warm up the embedding model (legacy alias)
  * @deprecated Use initEmbedder() instead
  */
 export async function warmupEmbedder(): Promise<void> {
@@ -42,79 +44,104 @@ export async function warmupEmbedder(): Promise<void> {
 }
 
 /**
- * Initialize the embedding model eagerly
- * Call this at startup to ensure embedder is ready
- */
-export async function initEmbedder(): Promise<void> {
-  console.log(`Loading embedding model: ${MODEL_NAME}...`);
-  const start = Date.now();
-  await getEmbedder();
-  console.log(`Embedding model loaded in ${Date.now() - start}ms`);
-}
-
-/**
  * Check if the embedder is ready
  */
 export function isEmbedderReady(): boolean {
-  return embedder !== null;
+  return getApiKey() !== null;
 }
 
 /**
- * Check if the embedder is currently loading
+ * Check if the embedder is currently loading (always false for API)
  */
 export function isEmbedderLoading(): boolean {
-  return isLoading;
+  return false;
 }
 
 /**
  * Generate embedding for a single text
  */
 export async function embed(text: string): Promise<Float32Array> {
-  const model = await getEmbedder();
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('OpenRouter API key not configured');
+  }
 
-  // BGE models work best with a prefix for retrieval
-  const prefixedText = `Represent this sentence for retrieval: ${text}`;
-
-  const output = await model(prefixedText, {
-    pooling: 'mean',
-    normalize: true,
+  const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://github.com/karbowiak/bot',
+    },
+    body: JSON.stringify({
+      model: DEFAULT_MODEL,
+      input: text,
+    }),
   });
 
-  // Extract the embedding from the tensor
-  // The data property is a typed array that we need to convert
-  const data = output.data;
-  if (data instanceof Float32Array) {
-    return data;
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Embedding API error: ${response.status} - ${errorText}`);
   }
-  // Handle other array types
-  return new Float32Array(Array.from(data as ArrayLike<number>));
+
+  const data = (await response.json()) as {
+    data?: Array<{ embedding?: number[] }>;
+  };
+
+  const embedding = data.data?.[0]?.embedding;
+  if (!embedding || !Array.isArray(embedding)) {
+    throw new Error('Invalid embedding response from API');
+  }
+
+  return new Float32Array(embedding);
 }
 
 /**
  * Generate embeddings for multiple texts (batched)
  */
 export async function embedBatch(texts: string[]): Promise<Float32Array[]> {
-  const model = await getEmbedder();
+  if (texts.length === 0) return [];
 
-  const prefixedTexts = texts.map((t) => `Represent this sentence for retrieval: ${t}`);
-
-  const outputs = await model(prefixedTexts, {
-    pooling: 'mean',
-    normalize: true,
-  });
-
-  // Split batched output into individual embeddings
-  const embeddings: Float32Array[] = [];
-  const rawData = outputs.data;
-  const data = rawData instanceof Float32Array ? rawData : new Float32Array(Array.from(rawData as ArrayLike<number>));
-
-  for (let i = 0; i < texts.length; i++) {
-    const start = i * EMBEDDING_DIM;
-    const end = start + EMBEDDING_DIM;
-    embeddings.push(new Float32Array(data.slice(start, end)));
+  const apiKey = getApiKey();
+  if (!apiKey) {
+    throw new Error('OpenRouter API key not configured');
   }
 
-  return embeddings;
+  const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://github.com/karbowiak/bot',
+    },
+    body: JSON.stringify({
+      model: DEFAULT_MODEL,
+      input: texts,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Embedding API error: ${response.status} - ${errorText}`);
+  }
+
+  const data = (await response.json()) as {
+    data?: Array<{ embedding?: number[]; index?: number }>;
+  };
+
+  if (!data.data || !Array.isArray(data.data)) {
+    throw new Error('Invalid batch embedding response from API');
+  }
+
+  // Sort by index to ensure correct order
+  const sorted = data.data.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+
+  return sorted.map((item) => {
+    if (!item.embedding || !Array.isArray(item.embedding)) {
+      throw new Error('Invalid embedding in batch response');
+    }
+    return new Float32Array(item.embedding);
+  });
 }
 
 /**

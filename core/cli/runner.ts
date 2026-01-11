@@ -235,6 +235,15 @@ async function listFiles(dir: string): Promise<string[]> {
 export async function runCli(options: RunnerOptions = {}): Promise<never> {
   const rootDir = options.rootDir ?? process.cwd();
 
+  // Load config before running commands
+  const { loadBotConfig } = await import('../config');
+  try {
+    await loadBotConfig();
+  } catch (error) {
+    // Config loading is optional for some commands (like help)
+    // Commands that need config will fail with a clear error
+  }
+
   const runner = new Runner(options);
 
   // Load built-in commands from core/cli/commands

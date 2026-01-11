@@ -98,6 +98,7 @@ export interface EventMap {
 
   // Outgoing events (to platform adapters)
   'message:send': MessageSendRequest;
+  'message:fetch': MessageFetchRequest;
   'typing:start': TypingRequest;
   'typing:stop': TypingRequest;
   'command:respond': { invocation: CommandInvocation; response: CommandResponse };
@@ -134,6 +135,17 @@ export interface ModalOpenRequest {
 export interface TypingRequest {
   channelId: string;
   platform: Platform;
+}
+
+/**
+ * Request to fetch a message from the platform
+ */
+export interface MessageFetchRequest {
+  channelId: string;
+  messageId: string;
+  platform: Platform;
+  /** Callback with the fetched message content (null if not found) */
+  callback: (content: string | null) => void;
 }
 
 /**

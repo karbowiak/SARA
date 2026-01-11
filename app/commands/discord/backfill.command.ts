@@ -10,14 +10,15 @@
  *   bun cli discord:backfill -i                 # Interactive mode
  */
 
-import { Command } from '@core';
+import { Command, getBotConfig } from '@core';
 import { ChannelType, Client, GatewayIntentBits, type Message, type TextChannel } from 'discord.js';
 import path from 'path';
 import * as readline from 'readline';
 import { initDatabase, messageExists, migrate } from '../../../core/database';
-import { embed, initEmbedder, isEmbedderReady } from '../../../core/embedder';
+import { embedBatch, initEmbedder, isEmbedderReady } from '../../../core/embedder';
 
 const BATCH_SIZE = 100; // Discord API limit
+const EMBEDDING_BATCH_SIZE = 50; // Number of embeddings to generate at once
 const RATE_LIMIT_DELAY = 1000; // 1 second between batches to avoid rate limits
 
 export default class BackfillCommand extends Command {
@@ -55,9 +56,9 @@ export default class BackfillCommand extends Command {
     let skipEmbeddings = this.option('skip-embeddings') as boolean;
     let dryRun = this.option('dry-run') as boolean;
 
-    const token = process.env.DISCORD_BOT_TOKEN;
+    const token = getBotConfig()?.tokens?.discord;
     if (!token) {
-      this.error('DISCORD_BOT_TOKEN not set in environment');
+      this.error('Discord token not configured in config file');
       return 1;
     }
 
@@ -195,6 +196,9 @@ export default class BackfillCommand extends Command {
     let channelNew = 0;
     let reachedCutoff = false;
 
+    // Collect messages that need embeddings for batch processing
+    const pendingEmbeddings: Array<{ messageId: number; content: string }> = [];
+
     try {
       while (!reachedCutoff) {
         // Fetch messages
@@ -233,14 +237,19 @@ export default class BackfillCommand extends Command {
             channelNew++;
             this.stats.messagesNew++;
 
-            // Generate embedding for non-bot, non-trivial messages
-            if (!skipEmbeddings && !message.author.bot && message.content.length >= 10 && isEmbedderReady()) {
-              await this.generateEmbedding(messageId, message.content);
+            // Queue embedding for non-bot, non-trivial messages
+            if (!skipEmbeddings && !message.author.bot && message.content.length >= 10) {
+              pendingEmbeddings.push({ messageId, content: message.content });
             }
           } catch (_error) {
             this.stats.errors++;
             // Continue processing other messages
           }
+        }
+
+        // Process embeddings in batches when we have enough
+        if (pendingEmbeddings.length >= EMBEDDING_BATCH_SIZE) {
+          await this.processPendingEmbeddings(pendingEmbeddings);
         }
 
         // Update last message ID for pagination
@@ -252,13 +261,53 @@ export default class BackfillCommand extends Command {
         }
 
         // Progress indicator
-        process.stdout.write(`\r     Found ${channelMessages} messages, ${channelNew} new...`);
+        process.stdout.write(
+          `\r     Found ${channelMessages} messages, ${channelNew} new, ${this.stats.embeddingsGenerated} embedded...`,
+        );
       }
 
-      console.log(`\r     ✓ ${channelMessages} messages, ${channelNew} new${' '.repeat(20)}`);
+      // Process any remaining embeddings
+      if (pendingEmbeddings.length > 0) {
+        await this.processPendingEmbeddings(pendingEmbeddings);
+      }
+
+      console.log(
+        `\r     ✓ ${channelMessages} messages, ${channelNew} new, ${this.stats.embeddingsGenerated} embedded${' '.repeat(10)}`,
+      );
     } catch (error) {
       this.stats.errors++;
       this.warning(`     ⚠ Error: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+
+  /**
+   * Process pending embeddings in batch
+   */
+  private async processPendingEmbeddings(pending: Array<{ messageId: number; content: string }>): Promise<void> {
+    if (pending.length === 0 || !isEmbedderReady()) return;
+
+    try {
+      // Take up to EMBEDDING_BATCH_SIZE items
+      const batch = pending.splice(0, EMBEDDING_BATCH_SIZE);
+      const contents = batch.map((p) => p.content);
+
+      // Generate all embeddings in one API call
+      const embeddings = await embedBatch(contents);
+
+      // Update database with results
+      const { updateMessageEmbedding } = await import('../../../core/database');
+
+      for (let i = 0; i < batch.length; i++) {
+        const item = batch[i];
+        const embedding = embeddings[i];
+        if (item && embedding) {
+          updateMessageEmbedding(item.messageId, embedding);
+          this.stats.embeddingsGenerated++;
+        }
+      }
+    } catch (error) {
+      // Log but don't fail the whole process
+      this.warning(`     ⚠ Embedding batch error: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
@@ -277,17 +326,6 @@ export default class BackfillCommand extends Command {
       isBot: message.author.bot,
       timestamp: message.createdAt,
     });
-  }
-
-  private async generateEmbedding(messageId: number, content: string): Promise<void> {
-    try {
-      const embedding = await embed(content);
-      const { updateMessageEmbedding } = await import('../../../core/database');
-      updateMessageEmbedding(messageId, embedding);
-      this.stats.embeddingsGenerated++;
-    } catch {
-      // Silently skip embedding errors
-    }
   }
 
   private sleep(ms: number): Promise<void> {

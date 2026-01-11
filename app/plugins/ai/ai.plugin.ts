@@ -274,13 +274,10 @@ export class AIPlugin implements MessageHandlerPlugin {
    *
    * Structure:
    * 1. System prompt with config, memories, and semantic search results
-   * 2. Single user message containing:
-   *    - Channel context (last N messages for reference)
-   *    - Current user's message
+   * 2. Proper multi-turn conversation history (user/assistant alternating)
+   * 3. Current user message
    *
-   * NOTE: We do NOT add history as separate user/assistant turns.
-   * That confuses the model into thinking it already had a multi-turn conversation.
-   * Instead, channel context is provided inline for reference.
+   * Uses proper OpenAI/OpenRouter conversation format with alternating roles.
    */
   private async buildMessages(message: BotMessage, tools: Tool[], context: PluginContext): Promise<ChatMessage[]> {
     const config = this.config ?? getBotConfig();
@@ -347,6 +344,15 @@ export class AIPlugin implements MessageHandlerPlugin {
       }
     }
 
+    // Check if user is replying to a failed image generation request
+    const imageRetryContext = await this.detectImageRetryContext(message, context);
+    if (imageRetryContext) {
+      additionalContextParts.push(imageRetryContext);
+      context.logger.info('Detected image retry context', {
+        messageId: message.id,
+      });
+    }
+
     // Build system prompt with all context
     const systemPrompt = buildSystemPrompt(config, {
       platform: message.platform,
@@ -356,45 +362,27 @@ export class AIPlugin implements MessageHandlerPlugin {
 
     const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
-    // Build user message with channel context inline
-    const userContent = this.buildUserContentWithContext(message);
+    // Build proper multi-turn conversation history
+    const historyMessages = this.buildConversationHistory(message);
+    messages.push(...historyMessages);
+
+    // Add current user message
+    const userContent = this.buildUserContent(message);
     messages.push({ role: 'user', content: userContent });
 
     return messages;
   }
 
   /**
-   * Build user message content with channel context included inline
+   * Build proper multi-turn conversation history from recent messages
    *
-   * Format:
-   * [Channel Context - Recent messages]
-   * @User1: message...
-   * @Bot: response...
-   * @User2: message...
-   *
-   * [Current Message]
-   * @CurrentUser: actual message content
+   * Returns alternating user/assistant messages in chronological order.
+   * Groups consecutive messages from the same role together.
    */
-  private buildUserContentWithContext(message: BotMessage): string {
-    const parts: string[] = [];
+  private buildConversationHistory(currentMessage: BotMessage): ChatMessage[] {
+    const config = this.config ?? getBotConfig();
+    const botName = config?.bot.name ?? 'Bot';
 
-    // Get channel context (recent messages)
-    const channelContext = this.buildChannelContext(message);
-    if (channelContext) {
-      parts.push(`[Channel Context - Recent messages for reference]\n${channelContext}`);
-    }
-
-    // Build current message content
-    const currentMessage = this.buildUserContent(message);
-    parts.push(`[Current Message]\n${currentMessage}`);
-
-    return parts.join('\n\n');
-  }
-
-  /**
-   * Build channel context from recent messages (formatted as text, not separate turns)
-   */
-  private buildChannelContext(currentMessage: BotMessage): string {
     try {
       // Get recent messages from database (excluding current message)
       const recentMessages = getRecentMessages(currentMessage.channel.id, HISTORY_LIMIT + 1);
@@ -405,21 +393,46 @@ export class AIPlugin implements MessageHandlerPlugin {
         .slice(0, HISTORY_LIMIT)
         .reverse();
 
-      if (history.length === 0) return '';
+      if (history.length === 0) return [];
 
-      // Format as text context (not separate API messages)
-      const lines = history.map((msg) => {
+      const messages: ChatMessage[] = [];
+      let currentRole: 'user' | 'assistant' | null = null;
+      let currentContent: string[] = [];
+
+      const flushCurrentMessage = () => {
+        if (currentRole && currentContent.length > 0) {
+          messages.push({
+            role: currentRole,
+            content: currentContent.join('\n'),
+          });
+          currentContent = [];
+        }
+      };
+
+      for (const msg of history) {
         const isBot = Boolean(msg.is_bot);
-        const userName = isBot ? (this.config?.bot.name ?? 'Bot') : (msg.display_name ?? msg.username ?? 'Unknown');
-        // created_at is Unix timestamp in milliseconds
-        const timestamp = new Date(msg.created_at).toISOString().substring(11, 16); // HH:MM
-        return `[${timestamp}] @${userName}: ${msg.content}`;
-      });
+        const role: 'user' | 'assistant' = isBot ? 'assistant' : 'user';
+        const userName = isBot ? botName : (msg.display_name ?? msg.username ?? 'Unknown');
 
-      return lines.join('\n');
+        // Format message with author prefix for user messages (helps AI know who said what)
+        const formattedContent = isBot ? msg.content : `@${userName}: ${msg.content}`;
+
+        // If role changed, flush the previous message
+        if (role !== currentRole) {
+          flushCurrentMessage();
+          currentRole = role;
+        }
+
+        currentContent.push(formattedContent);
+      }
+
+      // Flush any remaining content
+      flushCurrentMessage();
+
+      return messages;
     } catch (error) {
-      console.error('[AIPlugin] Channel context fetch error:', error);
-      return '';
+      console.error('[AIPlugin] Conversation history fetch error:', error);
+      return [];
     }
   }
 
@@ -494,6 +507,97 @@ ${lines.join('\n')}`;
     // Prefix with @author so the AI knows who is talking
     const authorName = message.author.displayName ?? message.author.name;
     return `@${authorName}: ${content || 'Hello!'}`;
+  }
+
+  /**
+   * Detect if user is replying to a failed image generation and extract context
+   * Returns instruction text for the AI if detected, null otherwise
+   */
+  private async detectImageRetryContext(message: BotMessage, context: PluginContext): Promise<string | null> {
+    // Check if this message is a reply
+    if (!message.replyToId) return null;
+
+    try {
+      // First try to get from database (for regular bot messages)
+      const recentMessages = getRecentMessages(message.channel.id, 50);
+      let content: string | undefined = recentMessages.find(
+        (m) => m.platform_message_id === message.replyToId && m.is_bot,
+      )?.content;
+
+      // If not in database, fetch directly from platform (for interaction replies like /imagine)
+      if (!content) {
+        const fetched = await this.fetchMessageContent(
+          message.channel.id,
+          message.replyToId,
+          message.platform,
+          context,
+        );
+        content = fetched ?? undefined;
+      }
+
+      if (!content) return null;
+
+      // Check for our specific failure format from /imagine
+      if (!content.includes('❌ **Image generation failed**')) return null;
+
+      // Extract the original request details
+      const promptMatch = content.match(/\*\*Original request:\*\* (.+?)(?:\n|$)/);
+      const styleMatch = content.match(/\*\*Style:\*\* (.+?)(?:\n|$)/);
+      const aspectMatch = content.match(/\*\*Aspect:\*\* (\d+:\d+)/);
+      const resolutionMatch = content.match(/\*\*Resolution:\*\* (\d+K)/);
+
+      if (!promptMatch) return null;
+
+      const originalPrompt = promptMatch[1]?.trim();
+      const style = styleMatch?.[1]?.trim();
+      const aspect = aspectMatch?.[1] ?? '1:1';
+      const resolution = resolutionMatch?.[1] ?? '1K';
+
+      // Build instruction for the AI
+      return `# ACTION REQUIRED: Image Generation Retry
+
+The user is replying to a FAILED image generation. You MUST call image_generation immediately.
+
+## Original Request (use these EXACT values):
+- Prompt: "${originalPrompt}"
+${style ? `- Style: "${style}"` : '- Style: (none specified)'}
+- Aspect ratio: ${aspect}
+- Resolution: ${resolution}
+
+## CRITICAL Instructions:
+1. Use the EXACT original prompt above as your base
+2. Apply ONLY the minimal change the user requested - do NOT rewrite or reimagine the prompt
+3. If user says "ok" or "try again" - use the original prompt unchanged
+4. If user gives a specific fix (e.g., "make her older") - change ONLY that part
+5. Keep all other details, style, composition, and descriptors from the original
+6. PRESERVE the original style, aspect_ratio, and resolution settings - pass them to the tool
+
+Call image_generation NOW with: the corrected prompt, style="${style || ''}", aspect_ratio="${aspect}", resolution="${resolution}".`;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Fetch message content from platform via event bus
+   */
+  private fetchMessageContent(
+    channelId: string,
+    messageId: string,
+    platform: string,
+    context: PluginContext,
+  ): Promise<string | null> {
+    return new Promise((resolve) => {
+      context.eventBus.emit('message:fetch', {
+        channelId,
+        messageId,
+        platform: platform as 'discord' | 'slack',
+        callback: resolve,
+      });
+
+      // Timeout after 5 seconds
+      setTimeout(() => resolve(null), 5000);
+    });
   }
 
   /**
@@ -573,6 +677,7 @@ ${lines.join('\n')}`;
           user: message.author,
           channel: message.channel,
           logger: context.logger,
+          eventBus: context.eventBus,
         };
 
         context.logger.debug('Executing tool', {

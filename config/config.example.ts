@@ -105,6 +105,27 @@ const config: BotConfig = {
      * Most models support 4096-8192, some up to 128k
      */
     maxTokens: 4096,
+
+    /**
+     * Model for image generation (image_generation tool)
+     * Must support image generation via modalities parameter
+     *
+     * Options:
+     * - 'google/gemini-2.0-flash-exp:free' (free tier)
+     * - 'google/gemini-2.5-flash-preview-05-20' (paid)
+     */
+    imageModel: 'google/gemini-2.0-flash-exp:free',
+
+    /**
+     * Model for deep reasoning (think_deeply tool)
+     * Should be a reasoning-optimized model
+     *
+     * Options:
+     * - 'openai/o1-mini' (fast reasoning)
+     * - 'openai/o1-preview' (deeper reasoning)
+     * - 'anthropic/claude-sonnet-4-20250514' (good alternative)
+     */
+    reasoningModel: 'openai/o1-mini',
   },
 
   // ============================================
@@ -296,6 +317,12 @@ const config: BotConfig = {
       },
     },
 
+    /**
+     * /imagine - Midjourney-style image generation
+     * Generates images with interactive buttons (regenerate, vary, upscale)
+     */
+    imagine: {},
+
     // ============================================
     // More Examples (commented out)
     // ============================================
@@ -389,6 +416,18 @@ const config: BotConfig = {
      * last_seen - Check when a user was last active
      */
     last_seen: {},
+
+    /**
+     * image_generation - Generate images from text prompts
+     * Uses OpenRouter with configurable model (ai.imageModel)
+     */
+    image_generation: {},
+
+    /**
+     * think_deeply - Escalate to reasoning model for complex problems
+     * Uses OpenRouter with configurable model (ai.reasoningModel)
+     */
+    think_deeply: {},
 
     // ============================================
     // More Examples (commented out)

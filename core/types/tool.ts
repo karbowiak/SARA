@@ -5,6 +5,7 @@
  * Anthropic tool use, and other LLM APIs.
  */
 
+import type { EventBus } from '../event-bus';
 import type { BotChannel, BotMessage, BotUser } from './message';
 import type { Logger } from './plugin';
 
@@ -103,6 +104,9 @@ export interface ToolExecutionContext {
 
   /** Logger for structured logging */
   logger: Logger;
+
+  /** Event bus for sending messages/reactions */
+  eventBus: EventBus;
 
   /** Access to other services if needed */
   getService?<T>(name: string): T | undefined;

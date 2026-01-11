@@ -81,6 +81,8 @@ export interface OutgoingMessage {
   attachments?: OutgoingAttachment[];
   replyToId?: string;
   ephemeral?: boolean;
+  /** Interactive components (buttons, selects) - rows of components */
+  components?: import('./command').BotComponent[][];
 }
 
 /**

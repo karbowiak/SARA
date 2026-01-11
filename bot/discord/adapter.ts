@@ -190,10 +190,39 @@ export class DiscordAdapter {
           return;
         }
 
-        await channel.send({
-          content: request.message.content,
-          reply: request.message.replyToId ? { messageReference: request.message.replyToId } : undefined,
-        });
+        // Build Discord message options
+        const messageOptions: {
+          content?: string;
+          reply?: { messageReference: string };
+          files?: Array<{ attachment: Buffer | string; name: string }>;
+          components?: any[];
+        } = {};
+
+        if (request.message.content) {
+          messageOptions.content = request.message.content;
+        }
+
+        if (request.message.replyToId) {
+          messageOptions.reply = { messageReference: request.message.replyToId };
+        }
+
+        // Handle file attachments
+        if (request.message.attachments && request.message.attachments.length > 0) {
+          messageOptions.files = request.message.attachments.map((att) => ({
+            attachment: att.data,
+            name: att.filename,
+          }));
+        }
+
+        // Handle components (buttons, selects)
+        if (request.message.components && request.message.components.length > 0) {
+          messageOptions.components = this.transformComponents(request.message.components);
+        }
+
+        await channel.send(messageOptions);
+
+        // Log outgoing message to terminal
+        this.logOutgoingMessage(channel, request.message.content, request.message.attachments?.length);
       } catch (error) {
         this.logger.error('Failed to send message', {
           channelId: request.channelId,
@@ -274,6 +303,28 @@ export class DiscordAdapter {
         });
       }
     });
+
+    // Fetch message content
+    this.eventBus.on('message:fetch', async (request) => {
+      if (request.platform !== 'discord') return;
+
+      try {
+        const channel = await this.client.channels.fetch(request.channelId);
+        if (!channel?.isTextBased() || !('messages' in channel)) {
+          request.callback(null);
+          return;
+        }
+
+        const message = await channel.messages.fetch(request.messageId);
+        request.callback(message.content);
+      } catch (error) {
+        this.logger.debug('Failed to fetch message', {
+          messageId: request.messageId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        request.callback(null);
+      }
+    });
   }
 
   // ============================================
@@ -330,6 +381,49 @@ export class DiscordAdapter {
       name: 'name' in channel ? (channel.name ?? undefined) : undefined,
       type: message.guildId ? 'guild' : 'dm',
     };
+  }
+
+  /**
+   * Log outgoing bot message to terminal in same format as incoming messages
+   */
+  private logOutgoingMessage(
+    channel: { id: string; guild?: { name: string } | null } & { name?: string },
+    content?: string,
+    attachmentCount?: number,
+  ): void {
+    const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
+    const guild = channel.guild?.name ?? 'DM';
+    const channelName = channel.name ?? channel.id;
+    const botName = this.config?.bot.name ?? 'Bot';
+
+    // Truncate long messages for terminal display
+    let displayContent = content ?? '';
+    if (displayContent.length > 200) {
+      displayContent = `${displayContent.substring(0, 200)}...`;
+    }
+
+    // Add attachment indicator
+    if (attachmentCount && attachmentCount > 0) {
+      displayContent = displayContent
+        ? `${displayContent} [${attachmentCount} attachment(s)]`
+        : `[${attachmentCount} attachment(s)]`;
+    }
+
+    // ANSI colors (matching logger.plugin.ts)
+    const dim = '\x1b[2m';
+    const reset = '\x1b[0m';
+    const yellow = '\x1b[33m';
+    const blue = '\x1b[34m';
+    const magenta = '\x1b[35m';
+    const white = '\x1b[37m';
+
+    // Format: [HH:MM:SS] Guild/#channel │ BotName [BOT]: message
+    console.log(
+      `${dim}[${timestamp}]${reset} ` +
+        `${yellow}${guild}${reset}${dim}/${reset}${blue}#${channelName}${reset} ` +
+        `${dim}│${reset} ${magenta}${botName}${reset} ${magenta}[BOT]${reset}` +
+        `${dim}:${reset} ${white}${displayContent}${reset}`,
+    );
   }
 
   // ============================================
@@ -395,6 +489,10 @@ export class DiscordAdapter {
           embeds: response.embeds?.map((e) => this.transformEmbed(e)),
           components: response.components ? (this.transformComponents(response.components) as any) : undefined,
           flags: response.ephemeral ? MessageFlags.Ephemeral : undefined,
+          files: response.attachments?.map((att) => ({
+            attachment: att.data,
+            name: att.filename,
+          })),
         });
       },
       defer: async (ephemeral?: boolean) => {
@@ -408,6 +506,10 @@ export class DiscordAdapter {
           embeds: response.embeds?.map((e) => this.transformEmbed(e)),
           components: response.components ? (this.transformComponents(response.components) as any) : undefined,
           flags: response.ephemeral ? MessageFlags.Ephemeral : undefined,
+          files: response.attachments?.map((att) => ({
+            attachment: att.data,
+            name: att.filename,
+          })),
         });
       },
       showModal: async (modal) => {

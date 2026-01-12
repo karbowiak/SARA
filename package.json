@@ -6,6 +6,7 @@
   "scripts": {
     "cli": "bun cli.ts",
     "discord": "bun cli.ts discord",
+    "slack": "bun cli.ts slack",
     "dev": "nodemon --exec 'bun cli.ts discord' --ext ts --watch app --watch bot --watch core --watch config.ts",
     "dev:debug": "nodemon --exec 'bun cli.ts discord --debug' --ext ts --watch app --watch bot --watch core --watch config.ts",
     "lint": "biome check .",
@@ -31,6 +32,7 @@
     "typescript": "^5"
   },
   "dependencies": {
+    "@slack/bolt": "^4.6.0",
     "@xenova/transformers": "^2.17.2",
     "better-sqlite3": "^12.6.0",
     "discord.js": "^14.25.1"

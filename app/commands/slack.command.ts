@@ -1,3 +1,9 @@
+/**
+ * Slack CLI Command - Start the Slack bot
+ */
+
+import path from 'node:path';
+import { SlackAdapter } from '@bot/slack/adapter';
 import {
   Command,
   createEventBus,
@@ -8,20 +14,18 @@ import {
   type PluginContext,
   unloadPlugins,
 } from '@core';
-import path from 'path';
-import { DiscordAdapter } from '../../bot/discord/adapter';
-import { initDatabase, migrate } from '../../core/database';
-import { initEmbedder } from '../../core/embedder';
+import { initDatabase, migrate } from '@core/database';
+import { initEmbedder } from '@core/embedder';
 
-export default class DiscordCommand extends Command {
+export default class SlackCommand extends Command {
   static override signature = `
-    discord
-    {--c|config=config/config.ts : Path to config file}
+    slack
+    {--c|config=config/config.slack.ts : Path to config file}
     {--d|debug : Enable debug logging}
     {--skip-embedder : Skip loading the embedding model}
   `;
 
-  static override description = 'Start the Discord bot';
+  static override description = 'Start the Slack bot';
 
   async handle(): Promise<number> {
     const configPath = this.option('config') as string;
@@ -41,13 +45,14 @@ export default class DiscordCommand extends Command {
 
     const config = getBotConfig();
 
-    // Validate required tokens
-    if (!config.tokens.discord) {
-      this.error('Discord token not set in config.tokens.discord');
+    // Validate Slack tokens
+    if (!config.tokens.slack?.botToken) {
+      this.error('Slack bot token not set in config.tokens.slack.botToken');
       return 1;
     }
-    if (!config.tokens.openrouter) {
-      this.error('OpenRouter API key not set in config.tokens.openrouter');
+
+    if (!config.tokens.slack?.appToken) {
+      this.error('Slack app token not set in config.tokens.slack.appToken');
       return 1;
     }
 
@@ -79,52 +84,26 @@ export default class DiscordCommand extends Command {
     // Create plugin context
     const context: PluginContext = { eventBus, logger };
 
-    // Load plugins from app/plugins (auto-wires to eventBus and starts timers)
-    const pluginsDir = path.join(import.meta.dir, '../plugins');
+    // Load plugins (auto-wires to eventBus and starts timers)
+    this.info('Loading plugins...');
+    const pluginsDir = path.join(process.cwd(), 'app', 'plugins');
     const plugins = await loadPlugins({ pluginsDir, context, logger, config });
 
     this.success(`Loaded ${plugins.all.length} plugins (${plugins.message.length} message handlers)`);
 
-    // Log slash command usage with colors
-    eventBus.on('command:received', (invocation) => {
-      const timestamp = new Date().toLocaleTimeString('en-US', { hour12: false });
-      const user = invocation.user.displayName ?? invocation.user.name;
-      const command = invocation.subcommand
-        ? `/${invocation.commandName} ${invocation.subcommand}`
-        : `/${invocation.commandName}`;
-      const args = Object.keys(invocation.args).length > 0 ? ` ${JSON.stringify(invocation.args)}` : '';
-
-      // ANSI colors
-      const dim = '\x1b[2m';
-      const reset = '\x1b[0m';
-      const green = '\x1b[32m';
-      const cyan = '\x1b[36m';
-      const white = '\x1b[37m';
-
-      console.log(
-        `${dim}[${timestamp}]${reset} ` +
-          `${green}⚡ COMMAND${reset} ${dim}│${reset} ` +
-          `${cyan}${user}${reset}${dim}:${reset} ` +
-          `${white}${command}${reset}${dim}${args}${reset}`,
-      );
-    });
-
-    // Create and connect Discord adapter
-    const adapter = new DiscordAdapter({
-      token: config.tokens.discord!,
+    // Create Slack adapter
+    this.info('Creating Slack adapter...');
+    const adapter = new SlackAdapter({
+      botToken: config.tokens.slack.botToken,
+      appToken: config.tokens.slack.appToken,
       eventBus,
       logger,
-      config,
-      pluginAccess: plugins.accessConfig,
     });
 
-    // Register slash commands when bot is ready
-    eventBus.once('bot:ready', async () => {
-      await adapter.registerSlashCommands();
-    });
-
-    this.info('Connecting to Discord...');
-    await adapter.connect(config.tokens.discord!);
+    // Connect to Slack
+    this.info('Connecting to Slack...');
+    await adapter.connect();
+    this.success(`${config.bot.name} is online on Slack! 🚀`);
 
     // Keep running until interrupted
     this.info('Bot is running. Press Ctrl+C to stop.');

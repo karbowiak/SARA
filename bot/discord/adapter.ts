@@ -379,7 +379,10 @@ export class DiscordAdapter {
 
   private transformMessage(message: Message): BotMessage {
     const botId = this.client.user?.id;
-    const mentionedBot = botId ? message.mentions.users.has(botId) || message.content.includes(`<@${botId}>`) : false;
+    // In DMs (no guild), always respond. In channels, require @mention
+    const isDM = !message.guildId;
+    const mentionedBot =
+      isDM || (botId ? message.mentions.users.has(botId) || message.content.includes(`<@${botId}>`) : false);
 
     // Get author's role IDs from guild member
     const authorRoleIds = message.member?.roles.cache.map((r) => r.id);
@@ -402,6 +405,7 @@ export class DiscordAdapter {
       mentionedUsers: message.mentions.users.map((u) => this.transformUser(u)),
       mentionedBot,
       replyToId: message.reference?.messageId ?? undefined,
+      threadId: undefined, // Discord threads have their own channel ID, no need for threadId
       timestamp: message.createdAt,
       platform: 'discord',
       raw: message,

@@ -3,10 +3,14 @@
  *
  * Plugins are loaded from the filesystem but only if they're listed in config.
  * Access control is applied per-plugin based on config.accessGroups.
+ *
+ * Message handlers are automatically wired to the eventbus.
+ * Timer plugins are automatically started.
  */
 
 import { Glob } from 'bun';
 import type { BotConfig, FeatureAccess, PluginsConfig } from './config';
+import { checkAccess } from './config';
 import type { BotMessage, Logger, MessageHandlerPlugin, Plugin, PluginContext, TimerHandlerPlugin } from './types';
 import { isMessageHandler, isPlugin, isTimerHandler } from './types';
 
@@ -27,6 +31,8 @@ export interface LoadedPlugins {
   timer: TimerHandlerPlugin[];
   /** Map of plugin ID to its access config */
   accessConfig: Map<string, FeatureAccess>;
+  /** Timer intervals (for cleanup on shutdown) */
+  timerIntervals: NodeJS.Timeout[];
 }
 
 /**
@@ -43,6 +49,7 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<LoadedP
     message: [],
     timer: [],
     accessConfig: new Map(),
+    timerIntervals: [],
   };
 
   // Get list of plugins to load from config (undefined = load all)
@@ -118,7 +125,102 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<LoadedP
     }
   }
 
+  // Sort message handlers by priority (higher first)
+  result.message.sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0));
+
+  // Wire message handlers to eventbus
+  wireMessageHandlers(context, result, config, logger);
+
+  // Start timer plugins
+  result.timerIntervals = startTimerPlugins(context, result, logger);
+
   return result;
+}
+
+/**
+ * Wire message handlers to the eventbus
+ *
+ * Subscribes to 'message:received' and dispatches to all matching handlers
+ * with proper access control, scope checking, and error handling.
+ */
+function wireMessageHandlers(
+  context: PluginContext,
+  plugins: LoadedPlugins,
+  config: BotConfig | undefined,
+  logger: Logger,
+): void {
+  context.eventBus.on('message:received', async (message: BotMessage) => {
+    for (const handler of plugins.message) {
+      // Check all restrictions (scope, platform, guild)
+      if (!shouldHandlerProcess(handler, message)) continue;
+
+      // Check access control (skip for bots to avoid blocking logger)
+      if (!message.author.isBot && config) {
+        const accessConfig = plugins.accessConfig.get(handler.id);
+        if (accessConfig) {
+          const accessContext = {
+            platform: message.platform,
+            userId: message.author.id,
+            roleIds: message.author.roleIds,
+            guildId: message.guildId,
+          };
+          if (!checkAccess(accessConfig, accessContext, config)) {
+            logger.debug(`User ${message.author.name} denied access to plugin ${handler.id}`, {
+              userId: message.author.id,
+              guildId: message.guildId,
+            });
+            continue;
+          }
+        }
+      }
+
+      // Check plugin's own shouldHandle logic
+      if (!handler.shouldHandle(message)) continue;
+
+      try {
+        await handler.handle(message, context);
+      } catch (error) {
+        logger.error(`Plugin ${handler.id} error`, {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    }
+  });
+}
+
+/**
+ * Start timer plugins
+ *
+ * Returns array of interval handles stored in LoadedPlugins for cleanup.
+ */
+function startTimerPlugins(context: PluginContext, plugins: LoadedPlugins, logger: Logger): NodeJS.Timeout[] {
+  const timerIntervals: NodeJS.Timeout[] = [];
+
+  for (const timerPlugin of plugins.timer) {
+    const intervalMs = timerPlugin.timerConfig.intervalMs;
+    logger.info(`Starting timer plugin: ${timerPlugin.id} (every ${intervalMs / 1000}s)`);
+
+    const runTick = async () => {
+      try {
+        await timerPlugin.tick(context);
+      } catch (err) {
+        logger.error(`Timer ${timerPlugin.id} tick error`, {
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    };
+
+    // Run immediately if configured
+    if (timerPlugin.timerConfig.runImmediately) {
+      runTick();
+    }
+
+    // Schedule recurring ticks
+    const interval = setInterval(runTick, intervalMs);
+    timerIntervals.push(interval);
+  }
+
+  return timerIntervals;
 }
 
 /**

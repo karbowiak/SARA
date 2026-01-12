@@ -672,7 +672,8 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
         channelId: message.channel.id,
         message: {
           content: chunks[i],
-          replyToId: i === 0 ? message.id : undefined, // Only reply to first chunk
+          replyToId: i === 0 ? message.id : undefined, // Discord: reply reference to first chunk
+          threadId: message.threadId, // Stay in thread if original was in thread (Slack)
         },
         platform: message.platform,
       });
@@ -683,30 +684,37 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
    * Convert @name mentions in AI response to platform-specific format
    */
   private convertMentionsForPlatform(message: BotMessage, content: string): string {
-    // Build reverse map: name → userId
+    // Build reverse map: name → userId (case-insensitive)
     const nameToId = new Map<string, string>();
 
     // Add mentioned users
     for (const user of message.mentionedUsers) {
-      const name = user.displayName ?? user.name;
-      nameToId.set(name.toLowerCase(), user.id);
+      const displayName = user.displayName ?? user.name;
+      nameToId.set(displayName.toLowerCase(), user.id);
       nameToId.set(user.name.toLowerCase(), user.id);
     }
 
     // Add author
-    const authorName = message.author.displayName ?? message.author.name;
-    nameToId.set(authorName.toLowerCase(), message.author.id);
+    const authorDisplayName = message.author.displayName ?? message.author.name;
+    nameToId.set(authorDisplayName.toLowerCase(), message.author.id);
     nameToId.set(message.author.name.toLowerCase(), message.author.id);
+
+    // Sort names by length (longest first) to match "Michael Karbowiak" before "Michael"
+    const sortedNames = Array.from(nameToId.keys()).sort((a, b) => b.length - a.length);
 
     // Replace @name with platform-specific mention
     // Both Discord and Slack use <@USERID> format
-    return content.replace(/@(\w+)/g, (match, name) => {
-      const userId = nameToId.get(name.toLowerCase());
+    let result = content;
+    for (const name of sortedNames) {
+      // Match @name (case-insensitive, handles multi-word names)
+      const regex = new RegExp(`@${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi');
+      const userId = nameToId.get(name);
       if (userId) {
-        return `<@${userId}>`;
+        result = result.replace(regex, `<@${userId}>`);
       }
-      return match; // Keep as-is if no match
-    });
+    }
+
+    return result;
   }
 
   /**

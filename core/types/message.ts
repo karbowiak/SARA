@@ -56,7 +56,10 @@ export interface BotMessage {
   author: BotUser;
   channel: BotChannel;
   attachments: BotAttachment[];
+  /** Message this is a direct reply to (Discord: reply reference, Slack: unused) */
   replyToId?: string;
+  /** Thread this message belongs to (Slack: thread_ts, Discord: unused - threads have own channel ID) */
+  threadId?: string;
   /** Guild/server ID (null for DMs) */
   guildId?: string;
   /** Guild/server name (null for DMs) */
@@ -79,7 +82,10 @@ export interface BotMessage {
 export interface OutgoingMessage {
   content?: string;
   attachments?: OutgoingAttachment[];
+  /** Message ID to reply to (Discord: creates reply reference, Slack: ignored) */
   replyToId?: string;
+  /** Thread ID for threaded replies (Slack: thread_ts, Discord: ignored - use channel threads) */
+  threadId?: string;
   ephemeral?: boolean;
   /** Interactive components (buttons, selects) - rows of components */
   components?: import('./command').BotComponent[][];

@@ -12,7 +12,12 @@ import type { Tool } from './types/tool';
  */
 export interface TokensConfig {
   /** Discord bot token */
-  discord: string;
+  discord?: string;
+  /** Slack tokens */
+  slack?: {
+    botToken: string;
+    appToken: string;
+  };
   /** OpenRouter API key */
   openrouter: string;
   /** Tavily API key (optional, for web search) */

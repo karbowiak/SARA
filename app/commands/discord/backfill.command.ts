@@ -14,7 +14,7 @@ import { Command, getBotConfig } from '@core';
 import { ChannelType, Client, GatewayIntentBits, type Message, type TextChannel } from 'discord.js';
 import path from 'path';
 import * as readline from 'readline';
-import { initDatabase, messageExists, migrate } from '../../../core/database';
+import { initDatabase, insertMessage, messageExists, migrate, updateMessageEmbedding } from '../../../core/database';
 import { embedBatch, initEmbedder, isEmbedderReady } from '../../../core/embedder';
 
 const BATCH_SIZE = 100; // Discord API limit
@@ -295,8 +295,6 @@ export default class BackfillCommand extends Command {
       const embeddings = await embedBatch(contents);
 
       // Update database with results
-      const { updateMessageEmbedding } = await import('../../../core/database');
-
       for (let i = 0; i < batch.length; i++) {
         const item = batch[i];
         const embedding = embeddings[i];
@@ -312,9 +310,7 @@ export default class BackfillCommand extends Command {
   }
 
   private async storeMessage(message: Message, guildId: string, _guildName: string): Promise<number> {
-    const { insertMessage: insert } = await import('../../../core/database');
-
-    return insert({
+    return insertMessage({
       platform: 'discord',
       platformMessageId: message.id,
       guildId: guildId,

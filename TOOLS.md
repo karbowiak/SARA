@@ -19,6 +19,7 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 | **currency_convert** | `currency.tool.ts` | Convert between currencies using real-time exchange rates |
 | **reminder** | `reminder.tool.ts` | Create, list, and cancel reminders via natural language. Supports recurring (daily/weekly/monthly) |
 | **search_knowledge** | `knowledge-search.tool.ts` | Search the server's knowledge base. Semantic search with tag filtering |
+| **stream_alert** | `stream-alert.tool.ts` | Manage stream alerts (add/remove/list) for Twitch, YouTube, Kick, Chaturbate, MFC |
 
 ## Slash Commands
 
@@ -30,6 +31,7 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 | **/imagine** | `app/plugins/slash/imagine/` | Generate images with style presets, aspect ratios, and interactive buttons (regenerate, vary, upscale) |
 | **/reminder** | `app/plugins/slash/reminder/` | Set/list/cancel reminders. Delivered via DM with snooze buttons |
 | **/knowledge** | `app/plugins/slash/knowledge/` | Manage server knowledge base. Add, search, list, get, delete entries with tag support |
+| **/media** | `app/plugins/media/` | Download and display content from social media (Instagram, TikTok, Reddit) |
 
 ## Tools to Port (from SARA v2)
 
@@ -56,7 +58,7 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 | **MathTool** | LLMs handle math well enough |
 | **PingTool** | Security risk (shell exec), niche use case |
 | **ROAStatusTool** | Game-specific, not portable |
-| **StreamAlertTool** | Complex, requires stream monitoring service |
+| **ROAStatusTool** | Game-specific, not portable |
 
 ## Creating a New Tool
 

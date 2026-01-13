@@ -44,6 +44,12 @@ export function getDb(config: DatabaseConfig = {}): Database {
   // Enable WAL mode for better concurrent access
   db.exec('PRAGMA journal_mode = WAL');
 
+  // Wait up to 5000ms for a lock instead of failing immediately
+  db.exec('PRAGMA busy_timeout = 5000');
+
+  // Synchronous NORMAL is faster and safe enough for WAL mode
+  db.exec('PRAGMA synchronous = NORMAL');
+
   // Enable foreign keys
   db.exec('PRAGMA foreign_keys = ON');
 

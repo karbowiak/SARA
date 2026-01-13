@@ -342,6 +342,16 @@ const config: BotConfig = {
      */
     'reminder-timer': {},
 
+    /**
+     * media - Social media content expansion and /media command
+     */
+    media: {},
+
+    /**
+     * stream - Stream monitoring and alerts
+     */
+    stream: {},
+
     // ============================================
     // More Examples (commented out)
     // ============================================
@@ -465,6 +475,11 @@ const config: BotConfig = {
      * Semantic search across guild-shared knowledge entries
      */
     search_knowledge: {},
+
+    /**
+     * stream_alert - Manage stream alerts
+     */
+    stream_alert: {},
 
     // ============================================
     // More Examples (commented out)

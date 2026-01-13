@@ -97,21 +97,44 @@ export function insertMessage(message: MessageInsert): number {
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
-  const result = stmt.run(
-    userId,
-    message.platform,
-    message.platformMessageId,
-    message.guildId ?? null,
-    message.channelId,
-    message.content,
-    embedding,
-    timestamp,
+  try {
+    const result = stmt.run(
+      userId,
+      message.platform,
+      message.platformMessageId,
+      message.guildId ?? null,
+      message.channelId,
+      message.content,
+      embedding,
+      timestamp,
+    );
+
+    // Update user's message count
+    incrementMessageCount(userId);
+
+    return Number(result.lastInsertRowid);
+  } catch (error: unknown) {
+    // If message already exists (race condition), return its ID
+    if (isUniqueConstraintError(error)) {
+      const existing = db
+        .prepare('SELECT id FROM messages WHERE platform = ? AND platform_message_id = ?')
+        .get(message.platform, message.platformMessageId) as { id: number };
+
+      if (existing) {
+        return existing.id;
+      }
+    }
+    throw error;
+  }
+}
+
+function isUniqueConstraintError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code: string }).code === 'SQLITE_CONSTRAINT_UNIQUE'
   );
-
-  // Update user's message count
-  incrementMessageCount(userId);
-
-  return Number(result.lastInsertRowid);
 }
 
 /**

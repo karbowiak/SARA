@@ -8,7 +8,7 @@
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 
 // Common currency codes for the enum
-const COMMON_CURRENCIES = [
+const _COMMON_CURRENCIES = [
   'USD',
   'EUR',
   'GBP',

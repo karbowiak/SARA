@@ -283,7 +283,7 @@ Write a short, friendly comment to go with this reminder (like "Time to get thin
       const reminderId = parseInt(parts[2] ?? '0', 10);
       const snoozeSeconds = parseInt(parts[3] ?? '0', 10);
 
-      if (isNaN(reminderId) || isNaN(snoozeSeconds) || reminderId === 0) {
+      if (Number.isNaN(reminderId) || Number.isNaN(snoozeSeconds) || reminderId === 0) {
         await interaction.reply({ content: '❌ Invalid snooze action.', ephemeral: true });
         return;
       }

@@ -13,7 +13,7 @@ export function up(db: Database): void {
   `);
 }
 
-export function down(db: Database): void {
+export function down(_db: Database): void {
   // SQLite doesn't support DROP COLUMN easily, so we'd need to recreate the table
   // For simplicity, we'll just leave the column
 }

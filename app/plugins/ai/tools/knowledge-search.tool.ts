@@ -155,7 +155,7 @@ export class KnowledgeSearchTool implements Tool {
             id: r.id,
             content: r.content,
             tags: r.tags,
-            relevance: Math.round(r.score * 100) + '%',
+            relevance: `${Math.round(r.score * 100)}%`,
           })),
           count: results.length,
         },

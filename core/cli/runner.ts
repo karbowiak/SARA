@@ -239,7 +239,7 @@ export async function runCli(options: RunnerOptions = {}): Promise<never> {
   const { loadBotConfig } = await import('../config');
   try {
     await loadBotConfig();
-  } catch (error) {
+  } catch (_error) {
     // Config loading is optional for some commands (like help)
     // Commands that need config will fail with a clear error
   }

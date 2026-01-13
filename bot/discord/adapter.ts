@@ -379,10 +379,14 @@ export class DiscordAdapter {
 
   private transformMessage(message: Message): BotMessage {
     const botId = this.client.user?.id;
-    // In DMs (no guild), always respond. In channels, require @mention
+    // In DMs (no guild), always respond. In channels, require @mention or reply to bot
     const isDM = !message.guildId;
-    const mentionedBot =
-      isDM || (botId ? message.mentions.users.has(botId) || message.content.includes(`<@${botId}>`) : false);
+    const isDirectMention = botId
+      ? message.mentions.users.has(botId) || message.content.includes(`<@${botId}>`)
+      : false;
+    // Check if this is a reply to the bot's message
+    const isReplyToBot = message.reference?.messageId && message.mentions.repliedUser?.id === botId;
+    const mentionedBot = isDM || isDirectMention || isReplyToBot;
 
     // Get author's role IDs from guild member
     const authorRoleIds = message.member?.roles.cache.map((r) => r.id);

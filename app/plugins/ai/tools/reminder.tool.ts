@@ -156,7 +156,7 @@ RECURRING:
 
     // Parse the UTC timestamp
     const triggerDate = new Date(params.trigger_at_utc);
-    if (isNaN(triggerDate.getTime())) {
+    if (Number.isNaN(triggerDate.getTime())) {
       return {
         success: false,
         error: {
@@ -196,7 +196,7 @@ RECURRING:
     let repeatEndAt: number | undefined;
     if (params.repeat_until_utc) {
       const repeatEndDate = new Date(params.repeat_until_utc);
-      if (!isNaN(repeatEndDate.getTime())) {
+      if (!Number.isNaN(repeatEndDate.getTime())) {
         repeatEndAt = Math.floor(repeatEndDate.getTime() / 1000);
       }
     }

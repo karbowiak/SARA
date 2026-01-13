@@ -5,7 +5,7 @@
  * Supports tags for organization and semantic search via embeddings.
  */
 
-import { embed, getEmbeddingDimension, isEmbedderReady } from '../embedder';
+import { embed, isEmbedderReady } from '../embedder';
 import { getDb } from './client';
 
 export interface KnowledgeEntry {

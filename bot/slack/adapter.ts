@@ -22,6 +22,10 @@ export class SlackAdapter {
   private eventBus: EventBus;
   private logger: Logger;
   private botUserId?: string;
+  private userDirectoryByTeam: Map<string, Map<string, Set<string>>> = new Map();
+  private userAliasesByTeam: Map<string, Map<string, Set<string>>> = new Map();
+  private userTeams: Map<string, Set<string>> = new Map();
+  private userRefreshTimer?: NodeJS.Timeout;
 
   constructor(options: SlackAdapterOptions) {
     this.eventBus = options.eventBus;
@@ -55,6 +59,9 @@ export class SlackAdapter {
 
     // Verify required permissions
     await this.verifyPermissions();
+
+    await this.refreshUserDirectory();
+    this.startUserRefreshTimer();
 
     this.eventBus.fire('bot:ready', { platform: 'slack' });
   }
@@ -249,6 +256,10 @@ export class SlackAdapter {
    */
   async disconnect(): Promise<void> {
     this.logger.info('Slack adapter disconnecting...');
+    if (this.userRefreshTimer) {
+      clearInterval(this.userRefreshTimer);
+      this.userRefreshTimer = undefined;
+    }
     await this.app.stop();
   }
 
@@ -295,6 +306,24 @@ export class SlackAdapter {
           error: error instanceof Error ? error.message : String(error),
         });
       }
+    });
+
+    // User added to workspace
+    this.app.event('team_join', async ({ event }) => {
+      const user = (event as any).user;
+      if (!user?.id) return;
+      const teamId = user.team_id || (event as any).team;
+      if (!teamId) return;
+      this.upsertUserAliases(teamId, user.id, user);
+    });
+
+    // User updated
+    this.app.event('user_change', async ({ event }) => {
+      const user = (event as any).user;
+      if (!user?.id) return;
+      const teamId = user.team_id || (event as any).team;
+      if (!teamId) return;
+      this.upsertUserAliases(teamId, user.id, user);
     });
 
     // NOTE: We intentionally do NOT handle 'app_mention' event separately.
@@ -377,6 +406,132 @@ export class SlackAdapter {
       if (request.platform !== 'slack') return;
       // No-op on Slack
     });
+
+    // Resolve @name to user ID using cached directory
+    this.eventBus.on('user:resolve', async (request) => {
+      if (request.platform !== 'slack') return;
+      const resolved = this.resolveUserId(request.name, request.guildId);
+      request.callback(resolved);
+    });
+  }
+
+  // ============================================
+  // User Directory Cache
+  // ============================================
+
+  private normalizeName(name?: string | null): string | null {
+    if (!name) return null;
+    const normalized = name.trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private getTeamDirectory(teamId: string): Map<string, Set<string>> {
+    let directory = this.userDirectoryByTeam.get(teamId);
+    if (!directory) {
+      directory = new Map();
+      this.userDirectoryByTeam.set(teamId, directory);
+    }
+    return directory;
+  }
+
+  private getTeamAliases(teamId: string): Map<string, Set<string>> {
+    let aliases = this.userAliasesByTeam.get(teamId);
+    if (!aliases) {
+      aliases = new Map();
+      this.userAliasesByTeam.set(teamId, aliases);
+    }
+    return aliases;
+  }
+
+  private upsertUserAliases(teamId: string, userId: string, user: any): void {
+    const directory = this.getTeamDirectory(teamId);
+    const aliasesByUser = this.getTeamAliases(teamId);
+
+    const previous = aliasesByUser.get(userId);
+    if (previous) {
+      for (const alias of previous) {
+        const set = directory.get(alias);
+        if (set) {
+          set.delete(userId);
+          if (set.size === 0) directory.delete(alias);
+        }
+      }
+    }
+
+    const aliases = new Set<string>();
+    const profile = user.profile ?? {};
+    const candidateNames = [
+      user.name,
+      user.real_name,
+      profile.display_name,
+      profile.real_name,
+      profile.display_name_normalized,
+      profile.real_name_normalized,
+    ]
+      .map((n) => this.normalizeName(n))
+      .filter((n): n is string => Boolean(n));
+
+    for (const alias of candidateNames) {
+      aliases.add(alias);
+      const set = directory.get(alias) ?? new Set<string>();
+      set.add(userId);
+      directory.set(alias, set);
+    }
+
+    aliasesByUser.set(userId, aliases);
+
+    const userTeamSet = this.userTeams.get(userId) ?? new Set<string>();
+    userTeamSet.add(teamId);
+    this.userTeams.set(userId, userTeamSet);
+  }
+
+  private resolveUserId(name: string, teamId?: string): string | null {
+    if (!teamId) return null;
+    const normalized = this.normalizeName(name);
+    if (!normalized) return null;
+    const directory = this.getTeamDirectory(teamId);
+    const matches = directory.get(normalized);
+    if (!matches || matches.size !== 1) return null;
+    return matches.values().next().value ?? null;
+  }
+
+  private async refreshUserDirectory(): Promise<void> {
+    try {
+      const auth = await this.app.client.auth.test();
+      const teamId = auth.team_id;
+      if (!teamId) return;
+
+      this.userDirectoryByTeam.set(teamId, new Map());
+      this.userAliasesByTeam.set(teamId, new Map());
+
+      let cursor: string | undefined;
+      do {
+        const response = await this.app.client.users.list({
+          limit: 200,
+          cursor,
+        });
+        const members = (response as any).members ?? [];
+        for (const user of members) {
+          if (!user?.id) continue;
+          this.upsertUserAliases(teamId, user.id, user);
+        }
+        cursor = (response as any).response_metadata?.next_cursor || undefined;
+      } while (cursor);
+
+      this.logger.info('Slack user directory refreshed', { teamId });
+    } catch (error) {
+      this.logger.error('Failed to refresh Slack user directory', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private startUserRefreshTimer(): void {
+    if (this.userRefreshTimer) return;
+    const twelveHoursMs = 12 * 60 * 60 * 1000;
+    this.userRefreshTimer = setInterval(() => {
+      this.refreshUserDirectory().catch(() => {});
+    }, twelveHoursMs);
   }
 
   // ============================================

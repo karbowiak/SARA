@@ -5,11 +5,13 @@
  * Supports text and image understanding via configurable models on OpenRouter.
  */
 
+import { convertToPng } from '@app/helpers/image';
 import {
   type AccessContext,
   type BotConfig,
   type BotMessage,
   type ChatMessage,
+  type ContentPart,
   createOpenRouterClient,
   getAccessibleTools,
   getBotConfig,
@@ -107,6 +109,12 @@ export class AIPlugin implements MessageHandlerPlugin {
       return;
     }
 
+    // DEBUG: Check if handle is being called multiple times
+    context.logger.debug('[AIPlugin] handle() called', {
+      messageId: message.id,
+      content: message.content.substring(0, 50),
+    });
+
     // Emit processing started event
     context.eventBus.fire('ai:processing', {
       messageId: message.id,
@@ -182,6 +190,12 @@ export class AIPlugin implements MessageHandlerPlugin {
           promptTokens: response.usage?.prompt_tokens,
           completionTokens: response.usage?.completion_tokens,
         });
+        context.logger.debug('[AIPlugin] About to send response', {
+          messageId: message.id,
+          contentLength: result.content?.length ?? 0,
+          content: result.content?.substring(0, 100) ?? '',
+        });
+
         return;
       }
 
@@ -274,6 +288,9 @@ export class AIPlugin implements MessageHandlerPlugin {
       context.logger.info('Detected image retry context', { messageId: message.id });
     }
 
+    // Add image attachment context (if any)
+    const imageContext = this.buildImageAttachmentContext(message);
+
     // Build system prompt with all context using centralized helper
     const { systemPrompt, debug } = await buildFullSystemPrompt(config, {
       messageContent: message.content,
@@ -283,7 +300,8 @@ export class AIPlugin implements MessageHandlerPlugin {
       userId: message.author.id,
       userName: message.author.displayName ?? message.author.name,
       tools: tools.length > 0 ? tools : undefined,
-      additionalContext: imageRetryContext ?? undefined,
+      additionalContext:
+        [imageRetryContext, imageContext].filter((part): part is string => Boolean(part)).join('\n\n') || undefined,
     });
 
     // Log what was loaded
@@ -304,17 +322,17 @@ export class AIPlugin implements MessageHandlerPlugin {
     messages.push(...historyMessages);
 
     // Add current user message
-    const userContent = this.buildUserContent(message);
+    const userContent = await this.buildUserContent(message);
     messages.push({ role: 'user', content: userContent });
 
     return messages;
   }
 
   /**
-   * Build proper multi-turn conversation history from recent messages
+   * Build conversation history from recent messages
    *
-   * Returns alternating user/assistant messages in chronological order.
-   * Groups consecutive messages from the same role together.
+   * Returns each message separately to maintain group chat flow.
+   * Filters messages older than 2 hours for recency.
    */
   private buildConversationHistory(currentMessage: BotMessage): ChatMessage[] {
     const config = this.config ?? getBotConfig();
@@ -332,21 +350,16 @@ export class AIPlugin implements MessageHandlerPlugin {
 
       if (history.length === 0) return [];
 
-      const messages: ChatMessage[] = [];
-      let currentRole: 'user' | 'assistant' | null = null;
-      let currentContent: string[] = [];
+      // Filter messages older than 2 hours
+      const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+      const cutoffTime = Date.now() - TWO_HOURS_MS;
 
-      const flushCurrentMessage = () => {
-        if (currentRole && currentContent.length > 0) {
-          messages.push({
-            role: currentRole,
-            content: currentContent.join('\n'),
-          });
-          currentContent = [];
-        }
-      };
+      const messages: ChatMessage[] = [];
 
       for (const msg of history) {
+        // Skip old messages
+        if (msg.created_at < cutoffTime) continue;
+
         const isBot = Boolean(msg.is_bot);
         const role: 'user' | 'assistant' = isBot ? 'assistant' : 'user';
         const userName = isBot ? botName : (msg.display_name ?? msg.username ?? 'Unknown');
@@ -354,17 +367,12 @@ export class AIPlugin implements MessageHandlerPlugin {
         // Format message with author prefix for user messages (helps AI know who said what)
         const formattedContent = isBot ? msg.content : `@${userName}: ${msg.content}`;
 
-        // If role changed, flush the previous message
-        if (role !== currentRole) {
-          flushCurrentMessage();
-          currentRole = role;
-        }
-
-        currentContent.push(formattedContent);
+        // Keep each message separate for group chat flow
+        messages.push({
+          role,
+          content: formattedContent,
+        });
       }
-
-      // Flush any remaining content
-      flushCurrentMessage();
 
       return messages;
     } catch (error) {
@@ -378,7 +386,7 @@ export class AIPlugin implements MessageHandlerPlugin {
    * Converts platform-specific mentions to readable @name format
    * Prefixes message with @author for context
    */
-  private buildUserContent(message: BotMessage): string {
+  private async buildUserContent(message: BotMessage): Promise<string | ContentPart[]> {
     // Convert mentions to readable format: <@123> → @username
     let content = message.content;
 
@@ -390,8 +398,8 @@ export class AIPlugin implements MessageHandlerPlugin {
     // Also include the author
     userMap.set(message.author.id, message.author.displayName ?? message.author.name);
 
-    // Replace Discord-style mentions with @name
-    content = content.replace(/<@!?(\d+)>/g, (match, userId) => {
+    // Replace platform mentions with @name (Discord numeric, Slack alphanumeric)
+    content = content.replace(/<@!?([A-Z0-9]+)>/g, (match, userId) => {
       const name = userMap.get(userId);
       return name ? `@${name}` : match;
     });
@@ -401,20 +409,69 @@ export class AIPlugin implements MessageHandlerPlugin {
     const botNamePattern = new RegExp(`@(${botName}|Bot)\\b`, 'gi');
     content = content.replace(botNamePattern, '').trim();
 
-    // If there are images, append their URLs for vision models
-    const images = message.attachments.filter(
-      (a) => a.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(a.filename),
-    );
-
-    if (images.length > 0) {
-      // For models that support vision, we include image URLs
-      const imageUrls = images.map((img) => img.url).join('\n');
-      content = `${content}\n\n[Images attached]:\n${imageUrls}`;
-    }
-
     // Prefix with @author so the AI knows who is talking
     const authorName = message.author.displayName ?? message.author.name;
-    return `@${authorName}: ${content || 'Hello!'}`;
+    const images = this.getImageAttachments(message);
+    const fallback = images.length > 0 ? 'Please analyze the attached image(s).' : 'Hello!';
+    const text = `@${authorName}: ${content || fallback}`;
+
+    if (images.length === 0) {
+      return text;
+    }
+
+    // Multimodal: convert all images to PNG data URLs
+    const parts: ContentPart[] = [{ type: 'text', text }];
+    const imageParts = await this.buildImageParts(images);
+    parts.push(...imageParts);
+    return parts;
+  }
+
+  /**
+   * Return image attachments suitable for multimodal input
+   */
+  private getImageAttachments(message: BotMessage): BotMessage['attachments'] {
+    return message.attachments.filter(
+      (a) => a.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(a.filename),
+    );
+  }
+
+  /**
+   * Build system prompt context for attached images
+   */
+  private buildImageAttachmentContext(message: BotMessage): string | null {
+    const images = this.getImageAttachments(message);
+    if (images.length === 0) return null;
+
+    const list = images.map((img, i) => `- Image ${i + 1}: ${img.url}`).join('\n');
+    return `# Image Attachments
+The user attached image(s):
+${list}
+
+If the user asks to edit/transform/use these images as a reference, call image_generation and set reference_image_url to the most relevant image URL.`;
+  }
+
+  private async buildImageParts(images: BotMessage['attachments']): Promise<ContentPart[]> {
+    const parts: ContentPart[] = [];
+
+    for (const img of images) {
+      try {
+        const response = await fetch(img.url, { signal: AbortSignal.timeout(15000) });
+        if (!response.ok) {
+          parts.push({ type: 'image_url', image_url: { url: img.url } });
+          continue;
+        }
+
+        const buffer = Buffer.from(await response.arrayBuffer());
+        const pngBuffer = await convertToPng(buffer);
+        const base64 = pngBuffer.toString('base64');
+        parts.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } });
+      } catch {
+        // Fallback to original URL if conversion fails
+        parts.push({ type: 'image_url', image_url: { url: img.url } });
+      }
+    }
+
+    return parts;
   }
 
   /**
@@ -549,6 +606,11 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
         args = { _raw: toolCall.function.arguments };
       }
 
+      // If user provided an image and is asking for edits, pass reference image to image_generation
+      if (toolName === 'image_generation') {
+        args = this.injectReferenceImageIfNeeded(args, message);
+      }
+
       context.eventBus.fire('ai:tool_call', {
         messageId: message.id,
         toolName,
@@ -662,7 +724,7 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
    */
   private async sendResponse(message: BotMessage, content: string, context: PluginContext): Promise<void> {
     // Convert @name mentions back to platform format
-    const processedContent = this.convertMentionsForPlatform(message, content);
+    const processedContent = await this.convertMentionsForPlatform(message, content);
 
     // Split long messages (Discord limit is 2000 chars)
     const chunks = this.splitMessage(processedContent, 2000);
@@ -683,7 +745,7 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
   /**
    * Convert @name mentions in AI response to platform-specific format
    */
-  private convertMentionsForPlatform(message: BotMessage, content: string): string {
+  private async convertMentionsForPlatform(message: BotMessage, content: string): Promise<string> {
     // Build reverse map: name → userId (case-insensitive)
     const nameToId = new Map<string, string>();
 
@@ -698,6 +760,16 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
     const authorDisplayName = message.author.displayName ?? message.author.name;
     nameToId.set(authorDisplayName.toLowerCase(), message.author.id);
     nameToId.set(message.author.name.toLowerCase(), message.author.id);
+
+    // Try to resolve any additional @names using the adapter's user directory
+    const candidateNames = this.extractMentionCandidates(content);
+    for (const candidate of candidateNames) {
+      if (nameToId.has(candidate.toLowerCase())) continue;
+      const resolved = await this.resolveUserId(candidate, message.guildId, message.platform);
+      if (resolved) {
+        nameToId.set(candidate.toLowerCase(), resolved);
+      }
+    }
 
     // Sort names by length (longest first) to match "Michael Karbowiak" before "Michael"
     const sortedNames = Array.from(nameToId.keys()).sort((a, b) => b.length - a.length);
@@ -746,6 +818,128 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
     }
 
     return chunks;
+  }
+
+  private extractMentionCandidates(content: string): string[] {
+    const candidates = new Set<string>();
+    const regex = /@([A-Za-z0-9][\w .'-]{0,32})/g;
+    let match = regex.exec(content);
+    while (match !== null) {
+      const index = match.index ?? 0;
+      const prevChar = index > 0 ? content[index - 1] : '';
+      if (prevChar !== '<') {
+        const raw = match[1] ?? '';
+        const cleaned = raw.trim().replace(/[.,!?:;]+$/g, '');
+        if (cleaned.length > 0) {
+          candidates.add(cleaned);
+        }
+      }
+      match = regex.exec(content);
+    }
+
+    return Array.from(candidates);
+  }
+
+  private resolveUserId(
+    name: string,
+    guildId: string | undefined,
+    platform: BotMessage['platform'],
+  ): Promise<string | null> {
+    if (!this.context) return Promise.resolve(null);
+
+    return new Promise((resolve) => {
+      this.context?.eventBus.emit('user:resolve', {
+        platform,
+        name,
+        guildId,
+        callback: resolve,
+      });
+
+      setTimeout(() => resolve(null), 1500);
+    });
+  }
+
+  /**
+   * Inject reference image URL into image_generation args when the user likely wants edits
+   */
+  private injectReferenceImageIfNeeded(args: Record<string, unknown>, message: BotMessage): Record<string, unknown> {
+    const hasReference = typeof args.reference_image_url === 'string' && args.reference_image_url.length > 0;
+    const images = this.getImageAttachments(message);
+    const shouldUse = this.shouldUseReferenceImage(message);
+    if (!hasReference && (images.length === 0 || !shouldUse)) return args;
+
+    const updated: Record<string, unknown> = {
+      ...args,
+      reference_image_url: hasReference ? args.reference_image_url : images[0]?.url,
+    };
+
+    // Preserve reference sizing unless the user explicitly asked for a ratio/resolution
+    if (!this.userSpecifiedAspectRatio(message.content)) {
+      delete updated.aspect_ratio;
+    }
+    if (!this.userSpecifiedResolution(message.content)) {
+      delete updated.resolution;
+    }
+
+    return updated;
+  }
+
+  /**
+   * Heuristic: decide if the user is asking to edit/transform the attached image
+   */
+  private shouldUseReferenceImage(message: BotMessage): boolean {
+    if (this.getImageAttachments(message).length === 0) return false;
+
+    const text = message.content.toLowerCase();
+    if (!text) return true;
+
+    const triggers = [
+      'use this',
+      'use the image',
+      'use this image',
+      'based on this',
+      'based on the',
+      'reference',
+      'edit',
+      'modify',
+      'change',
+      'remove',
+      'add',
+      'replace',
+      'swap',
+      'turn into',
+      'transform',
+      'restyle',
+      'style',
+      'color',
+      'colorize',
+      'enhance',
+      'upscale',
+      'background',
+      'make it',
+      'make this',
+      'fix',
+      'clean up',
+      'retouch',
+      'mask',
+      'inpaint',
+    ];
+
+    return triggers.some((t) => text.includes(t));
+  }
+
+  private userSpecifiedAspectRatio(text: string): boolean {
+    const ratioPattern = /\b(1:1|2:3|3:2|3:4|4:3|4:5|5:4|9:16|16:9|21:9)\b/i;
+    if (ratioPattern.test(text)) return true;
+
+    const wordPattern =
+      /\b(square|portrait|landscape|widescreen|ultrawide|vertical|horizontal|instagram|stories|phone)\b/i;
+    return wordPattern.test(text);
+  }
+
+  private userSpecifiedResolution(text: string): boolean {
+    const pattern = /\b(1k|2k|4k|1024|2048|4096)\b/i;
+    return pattern.test(text);
   }
 
   /**

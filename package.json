@@ -37,6 +37,7 @@
     "better-sqlite3": "^12.6.0",
     "discord.js": "^14.25.1",
     "instagram-private-api": "^1.46.1",
-    "instagram-url-direct": "^2.0.7"
+    "instagram-url-direct": "^2.0.7",
+    "sharp": "^0.34.5"
   }
 }

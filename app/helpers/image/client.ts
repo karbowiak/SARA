@@ -5,7 +5,14 @@
  */
 
 import { getBotConfig } from '@core';
-import type { AspectRatio, ImageGenerationRequest, ImageGenerationResult, ImageResolution } from './types';
+import { convertToPng, getImageDimensions } from './convert';
+import {
+  ASPECT_RATIO_DIMENSIONS,
+  type AspectRatio,
+  type ImageGenerationRequest,
+  type ImageGenerationResult,
+  type ImageResolution,
+} from './types';
 
 /** Default model for image generation */
 const DEFAULT_IMAGE_MODEL = 'google/gemini-2.0-flash-exp:free';
@@ -29,8 +36,10 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
   }
 
   const model = config?.ai?.imageModel ?? DEFAULT_IMAGE_MODEL;
-  const aspectRatio: AspectRatio = request.aspectRatio ?? '1:1';
-  const resolution: ImageResolution = request.resolution ?? '1K';
+  const userAspectRatio = request.aspectRatio;
+  const userResolution = request.resolution;
+  let aspectRatio: AspectRatio = request.aspectRatio ?? '1:1';
+  let resolution: ImageResolution = request.resolution ?? '1K';
 
   try {
     // Build the prompt with optional style enhancement
@@ -51,10 +60,23 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
         throw new Error(`Failed to download reference image: ${imageResponse.status}`);
       }
 
-      const imageBuffer = await imageResponse.arrayBuffer();
-      const base64 = Buffer.from(imageBuffer).toString('base64');
-      const contentType = imageResponse.headers.get('content-type') || 'image/jpeg';
-      const imageDataUrl = `data:${contentType};base64,${base64}`;
+      const referenceArrayBuffer = await imageResponse.arrayBuffer();
+      const referenceBuffer = Buffer.from(referenceArrayBuffer);
+
+      // If the user didn't specify sizing, preserve the reference image aspect ratio/size
+      const dims = await getImageDimensions(referenceBuffer);
+      if (dims) {
+        if (!userAspectRatio) {
+          aspectRatio = getNearestAspectRatio(dims.width, dims.height);
+        }
+        if (!userResolution) {
+          resolution = getResolutionForDimensions(dims.width, dims.height);
+        }
+      }
+
+      const pngBuffer = await convertToPng(referenceBuffer);
+      const base64 = pngBuffer.toString('base64');
+      const imageDataUrl = `data:image/png;base64,${base64}`;
 
       // Multi-modal input: text + reference image
       messageContent = [
@@ -233,4 +255,29 @@ export async function createPromptVariation(originalPrompt: string): Promise<str
     // Fallback on error
     return `${originalPrompt}, reimagined with new details`;
   }
+}
+
+function getNearestAspectRatio(width: number, height: number): AspectRatio {
+  const target = width / height;
+  let best: AspectRatio = '1:1';
+  let bestDiff = Number.POSITIVE_INFINITY;
+
+  for (const ratio of Object.keys(ASPECT_RATIO_DIMENSIONS) as AspectRatio[]) {
+    const dims = ASPECT_RATIO_DIMENSIONS[ratio];
+    const value = dims.width / dims.height;
+    const diff = Math.abs(value - target);
+    if (diff < bestDiff) {
+      bestDiff = diff;
+      best = ratio;
+    }
+  }
+
+  return best;
+}
+
+function getResolutionForDimensions(width: number, height: number): ImageResolution {
+  const maxDim = Math.max(width, height);
+  if (maxDim <= 1024) return '1K';
+  if (maxDim <= 2048) return '2K';
+  return '4K';
 }

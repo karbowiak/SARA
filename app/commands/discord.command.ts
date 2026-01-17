@@ -118,6 +118,9 @@ export default class DiscordCommand extends Command {
       pluginAccess: plugins.accessConfig,
     });
 
+    // Store adapter reference for plugins that need it
+    (eventBus as any).discordAdapter = adapter;
+
     // Register slash commands when bot is ready
     eventBus.once('bot:ready', async () => {
       await adapter.registerSlashCommands();

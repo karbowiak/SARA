@@ -99,6 +99,7 @@ export interface EventMap {
   // Outgoing events (to platform adapters)
   'message:send': MessageSendRequest;
   'message:fetch': MessageFetchRequest;
+  'message:suppress-embeds': MessageSuppressEmbedsRequest;
   'dm:send': DMSendRequest;
   'typing:start': TypingRequest;
   'typing:stop': TypingRequest;
@@ -107,6 +108,7 @@ export interface EventMap {
   'reaction:add': BotReaction;
   'reaction:remove': BotReaction;
   'modal:open': ModalOpenRequest;
+  'user:resolve': UserResolveRequest;
 
   // AI processing events (for logging/monitoring)
   'ai:processing': AIProcessingStarted;
@@ -147,6 +149,26 @@ export interface MessageFetchRequest {
   platform: Platform;
   /** Callback with the fetched message content (null if not found) */
   callback: (content: string | null) => void;
+}
+
+/**
+ * Request to resolve a username/display name to a platform user ID
+ */
+export interface UserResolveRequest {
+  platform: Platform;
+  name: string;
+  guildId?: string;
+  /** Callback with the resolved user ID (null if not found or ambiguous) */
+  callback: (userId: string | null) => void;
+}
+
+/**
+ * Request to suppress embeds on a message (Discord only)
+ */
+export interface MessageSuppressEmbedsRequest {
+  channelId: string;
+  messageId: string;
+  platform: Platform;
 }
 
 /**

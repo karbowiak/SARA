@@ -56,6 +56,12 @@ export class DiscordAdapter {
   private logger: Logger;
   private config?: BotConfig;
   private pluginAccess: Map<string, FeatureAccess>;
+  private guildUploadLimits: Map<string, number> = new Map();
+  private userDirectoryByGuild: Map<string, Map<string, Set<string>>> = new Map();
+  private userAliasesByGuild: Map<string, Map<string, Set<string>>> = new Map();
+  private userGuilds: Map<string, Set<string>> = new Map();
+  private userNameIndex: Map<string, { username?: string; globalName?: string }> = new Map();
+  private userRefreshTimer?: NodeJS.Timeout;
 
   constructor(options: DiscordAdapterOptions) {
     this.eventBus = options.eventBus;
@@ -70,6 +76,7 @@ export class DiscordAdapter {
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.DirectMessages,
+        GatewayIntentBits.GuildMembers,
       ],
     });
 
@@ -91,6 +98,10 @@ export class DiscordAdapter {
    */
   async disconnect(): Promise<void> {
     this.logger.info('Discord adapter disconnecting...');
+    if (this.userRefreshTimer) {
+      clearInterval(this.userRefreshTimer);
+      this.userRefreshTimer = undefined;
+    }
     this.client.destroy();
   }
 
@@ -101,6 +112,28 @@ export class DiscordAdapter {
     return this.client;
   }
 
+  /**
+   * Get upload limit for a guild in bytes
+   */
+  getGuildUploadLimit(guildId: string): number {
+    return this.guildUploadLimits.get(guildId) ?? 10 * 1024 * 1024; // Default 10MB
+  }
+
+  /**
+   * Cache upload limit based on boost tier
+   */
+  private cacheGuildUploadLimit(guildId: string, premiumTier: number): void {
+    const limits = {
+      0: 10 * 1024 * 1024, // 10MB (no boost)
+      1: 10 * 1024 * 1024, // 10MB (tier 1 doesn't increase file limit)
+      2: 50 * 1024 * 1024, // 50MB (tier 2)
+      3: 100 * 1024 * 1024, // 100MB (tier 3)
+    };
+    const limit = limits[premiumTier as keyof typeof limits] ?? limits[0];
+    this.guildUploadLimits.set(guildId, limit);
+    this.logger.debug(`Cached upload limit for guild ${guildId}: ${limit / 1024 / 1024}MB (tier ${premiumTier})`);
+  }
+
   // ============================================
   // Incoming Events (Discord → EventBus)
   // ============================================
@@ -109,13 +142,65 @@ export class DiscordAdapter {
     // Ready
     this.client.once(Events.ClientReady, (client) => {
       this.logger.info(`Discord connected as ${client.user.tag}`);
+
+      // Cache upload limits for all guilds
+      for (const [guildId, guild] of client.guilds.cache) {
+        this.cacheGuildUploadLimit(guildId, guild.premiumTier);
+      }
+
+      // Build user directory cache and start refresh timer
+      this.refreshUserDirectory().catch((error) => {
+        this.logger.error('Failed to build user directory', {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      });
+      this.startUserRefreshTimer();
+
       this.eventBus.fire('bot:ready', { platform: 'discord' });
+    });
+
+    // Guild member added
+    this.client.on(Events.GuildMemberAdd, (member) => {
+      this.upsertMemberAliases(member.guild.id, member.user.id, {
+        username: member.user.username,
+        globalName: member.user.globalName ?? undefined,
+        displayName: member.displayName,
+      });
+    });
+
+    // Guild member updated (nickname change, etc.)
+    this.client.on(Events.GuildMemberUpdate, (_, member) => {
+      this.upsertMemberAliases(member.guild.id, member.user.id, {
+        username: member.user.username,
+        globalName: member.user.globalName ?? undefined,
+        displayName: member.displayName,
+      });
+    });
+
+    // Guild member removed
+    this.client.on(Events.GuildMemberRemove, (member) => {
+      this.removeMemberAliases(member.guild.id, member.user.id);
+    });
+
+    // User updated (username/global name)
+    this.client.on(Events.UserUpdate, (oldUser, newUser) => {
+      const prev = { username: oldUser.username, globalName: oldUser.globalName ?? undefined };
+      const next = { username: newUser.username, globalName: newUser.globalName ?? undefined };
+      this.updateUserNamesAcrossGuilds(newUser.id, prev, next);
+    });
+
+    // Guild joined - cache upload limit
+    this.client.on(Events.GuildCreate, (guild) => {
+      this.cacheGuildUploadLimit(guild.id, guild.premiumTier);
+      this.logger.info(`Joined guild: ${guild.name} (${guild.id})`);
     });
 
     // Message received
     this.client.on(Events.MessageCreate, (message) => {
       // Ignore own messages
       if (message.author.id === this.client.user?.id) return;
+      // Extra safety: ignore all bot messages
+      if (message.author.bot) return;
 
       this.eventBus.fire('message:received', this.transformMessage(message));
     });
@@ -197,6 +282,7 @@ export class DiscordAdapter {
           content?: string;
           reply?: { messageReference: string };
           files?: Array<{ attachment: Buffer | string; name: string }>;
+          embeds?: any[];
           components?: any[];
         } = {};
 
@@ -216,6 +302,11 @@ export class DiscordAdapter {
           }));
         }
 
+        // Handle embeds
+        if (request.message.embeds && request.message.embeds.length > 0) {
+          messageOptions.embeds = request.message.embeds.map((e) => this.transformEmbed(e));
+        }
+
         // Handle components (buttons, selects)
         if (request.message.components && request.message.components.length > 0) {
           messageOptions.components = this.transformComponents(request.message.components);
@@ -228,6 +319,26 @@ export class DiscordAdapter {
       } catch (error) {
         this.logger.error('Failed to send message', {
           channelId: request.channelId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
+    // Suppress embeds on a message
+    this.eventBus.on('message:suppress-embeds', async (request) => {
+      if (request.platform !== 'discord') return;
+
+      try {
+        const channel = await this.client.channels.fetch(request.channelId);
+        if (!channel?.isTextBased()) return;
+
+        const message = await (channel as any).messages.fetch(request.messageId);
+        if (message?.flags) {
+          await message.suppressEmbeds(true);
+        }
+      } catch (error) {
+        this.logger.debug('Failed to suppress embeds', {
+          messageId: request.messageId,
           error: error instanceof Error ? error.message : String(error),
         });
       }
@@ -328,6 +439,14 @@ export class DiscordAdapter {
       }
     });
 
+    // Resolve @name to user ID using cached directory
+    this.eventBus.on('user:resolve', async (request) => {
+      if (request.platform !== 'discord') return;
+
+      const resolved = this.resolveUserId(request.name, request.guildId);
+      request.callback(resolved);
+    });
+
     // Send DM to a user
     this.eventBus.on('dm:send', async (request) => {
       if (request.platform !== 'discord') return;
@@ -371,6 +490,208 @@ export class DiscordAdapter {
         });
       }
     });
+  }
+
+  // ============================================
+  // User Directory Cache
+  // ============================================
+
+  private normalizeName(name?: string | null): string | null {
+    if (!name) return null;
+    const normalized = name.trim().toLowerCase();
+    return normalized.length > 0 ? normalized : null;
+  }
+
+  private getGuildDirectory(guildId: string): Map<string, Set<string>> {
+    let directory = this.userDirectoryByGuild.get(guildId);
+    if (!directory) {
+      directory = new Map();
+      this.userDirectoryByGuild.set(guildId, directory);
+    }
+    return directory;
+  }
+
+  private getGuildAliases(guildId: string): Map<string, Set<string>> {
+    let aliases = this.userAliasesByGuild.get(guildId);
+    if (!aliases) {
+      aliases = new Map();
+      this.userAliasesByGuild.set(guildId, aliases);
+    }
+    return aliases;
+  }
+
+  private upsertMemberAliases(
+    guildId: string,
+    userId: string,
+    names: { username?: string; globalName?: string; displayName?: string },
+  ): void {
+    const directory = this.getGuildDirectory(guildId);
+    const aliasesByUser = this.getGuildAliases(guildId);
+
+    // Remove old aliases for this user
+    const previous = aliasesByUser.get(userId);
+    if (previous) {
+      for (const alias of previous) {
+        const set = directory.get(alias);
+        if (set) {
+          set.delete(userId);
+          if (set.size === 0) directory.delete(alias);
+        }
+      }
+    }
+
+    const aliases = new Set<string>();
+    const candidateNames = [names.username, names.globalName, names.displayName]
+      .map((n) => this.normalizeName(n))
+      .filter((n): n is string => Boolean(n));
+
+    for (const alias of candidateNames) {
+      aliases.add(alias);
+      const set = directory.get(alias) ?? new Set<string>();
+      set.add(userId);
+      directory.set(alias, set);
+    }
+
+    aliasesByUser.set(userId, aliases);
+
+    // Track guild membership for user update events
+    const userGuildSet = this.userGuilds.get(userId) ?? new Set<string>();
+    userGuildSet.add(guildId);
+    this.userGuilds.set(userId, userGuildSet);
+
+    if (names.username || names.globalName) {
+      this.userNameIndex.set(userId, { username: names.username, globalName: names.globalName });
+    }
+  }
+
+  private removeMemberAliases(guildId: string, userId: string): void {
+    const directory = this.getGuildDirectory(guildId);
+    const aliasesByUser = this.getGuildAliases(guildId);
+    const aliases = aliasesByUser.get(userId);
+    if (!aliases) return;
+
+    for (const alias of aliases) {
+      const set = directory.get(alias);
+      if (set) {
+        set.delete(userId);
+        if (set.size === 0) directory.delete(alias);
+      }
+    }
+
+    aliasesByUser.delete(userId);
+
+    const userGuildSet = this.userGuilds.get(userId);
+    if (userGuildSet) {
+      userGuildSet.delete(guildId);
+      if (userGuildSet.size === 0) {
+        this.userGuilds.delete(userId);
+        this.userNameIndex.delete(userId);
+      }
+    }
+  }
+
+  private updateUserNamesAcrossGuilds(
+    userId: string,
+    previous: { username?: string; globalName?: string },
+    next: { username?: string; globalName?: string },
+  ): void {
+    const guilds = this.userGuilds.get(userId);
+    if (!guilds || guilds.size === 0) return;
+
+    for (const guildId of guilds) {
+      const directory = this.getGuildDirectory(guildId);
+      const aliasesByUser = this.getGuildAliases(guildId);
+      const aliases = aliasesByUser.get(userId);
+      if (!aliases) continue;
+
+      const prevNames = [previous.username, previous.globalName]
+        .map((n) => this.normalizeName(n))
+        .filter((n): n is string => Boolean(n));
+      const nextNames = [next.username, next.globalName]
+        .map((n) => this.normalizeName(n))
+        .filter((n): n is string => Boolean(n));
+
+      // Remove old username/globalName aliases
+      for (const name of prevNames) {
+        if (aliases.has(name)) {
+          aliases.delete(name);
+          const set = directory.get(name);
+          if (set) {
+            set.delete(userId);
+            if (set.size === 0) directory.delete(name);
+          }
+        }
+      }
+
+      // Add new username/globalName aliases
+      for (const name of nextNames) {
+        if (!aliases.has(name)) {
+          aliases.add(name);
+          const set = directory.get(name) ?? new Set<string>();
+          set.add(userId);
+          directory.set(name, set);
+        }
+      }
+
+      aliasesByUser.set(userId, aliases);
+    }
+
+    this.userNameIndex.set(userId, { username: next.username, globalName: next.globalName });
+  }
+
+  private async refreshUserDirectory(): Promise<void> {
+    try {
+      await this.client.guilds.fetch();
+      this.userDirectoryByGuild.clear();
+      this.userAliasesByGuild.clear();
+      this.userGuilds.clear();
+
+      for (const [, guild] of this.client.guilds.cache) {
+        try {
+          const members = await guild.members.fetch();
+          for (const [, member] of members) {
+            this.upsertMemberAliases(guild.id, member.user.id, {
+              username: member.user.username,
+              globalName: member.user.globalName ?? undefined,
+              displayName: member.displayName,
+            });
+          }
+        } catch (error) {
+          this.logger.warn('Failed to fetch guild members', {
+            guildId: guild.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+
+      this.logger.info('Discord user directory refreshed', {
+        guilds: this.client.guilds.cache.size,
+      });
+    } catch (error) {
+      this.logger.error('Failed to refresh Discord user directory', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  private startUserRefreshTimer(): void {
+    if (this.userRefreshTimer) return;
+    const twelveHoursMs = 12 * 60 * 60 * 1000;
+    this.userRefreshTimer = setInterval(() => {
+      this.refreshUserDirectory().catch(() => {});
+    }, twelveHoursMs);
+  }
+
+  private resolveUserId(name: string, guildId?: string): string | null {
+    if (!guildId) return null;
+    const normalized = this.normalizeName(name);
+    if (!normalized) return null;
+
+    const directory = this.getGuildDirectory(guildId);
+    const matches = directory.get(normalized);
+    if (!matches || matches.size !== 1) return null;
+
+    return matches.values().next().value ?? null;
   }
 
   // ============================================
@@ -562,6 +883,7 @@ export class DiscordAdapter {
         name:
           interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? undefined) : undefined,
         type: interaction.guildId ? 'guild' : 'dm',
+        nsfw: interaction.channel && 'nsfw' in interaction.channel ? (interaction.channel.nsfw ?? false) : false,
       },
       guildId: interaction.guildId ?? undefined,
       platform: 'discord',

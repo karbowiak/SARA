@@ -2,6 +2,8 @@
  * Normalized message types - platform agnostic
  */
 
+import type { BotEmbed } from './command';
+
 /**
  * Platform identifier
  */
@@ -34,6 +36,8 @@ export interface BotChannel {
   type: ChannelType;
   guildId?: string;
   guildName?: string;
+  /** Whether the channel is age-restricted (NSFW) */
+  nsfw?: boolean;
 }
 
 /**
@@ -87,6 +91,8 @@ export interface OutgoingMessage {
   /** Thread ID for threaded replies (Slack: thread_ts, Discord: ignored - use channel threads) */
   threadId?: string;
   ephemeral?: boolean;
+  /** Rich embeds */
+  embeds?: BotEmbed[];
   /** Interactive components (buttons, selects) - rows of components */
   components?: import('./command').BotComponent[][];
 }

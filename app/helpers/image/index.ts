@@ -5,4 +5,5 @@
  */
 
 export * from './client';
+export * from './convert';
 export * from './types';

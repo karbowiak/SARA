@@ -3,7 +3,7 @@
  */
 
 import { describe, expect, it } from 'bun:test';
-import { MediaService, type SocialPlatform } from '../../../app/plugins/media/media.service';
+import { MediaService } from '../../../app/helpers/media/media.service';
 
 describe('MediaService', () => {
   const service = new MediaService();

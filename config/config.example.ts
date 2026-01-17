@@ -32,6 +32,14 @@ const config: BotConfig = {
      * If not provided, web_search tool won't work
      */
     tavily: 'YOUR_TAVILY_API_KEY',
+
+    /**
+     * Instagram cookies (base64 encoded Netscape cookie file)
+     * Required for Instagram media downloads
+     * Export cookies from browser using a cookie export extension,
+     * then base64 encode the file: base64 -i cookies.txt
+     */
+    instagramCookies: 'YOUR_BASE64_ENCODED_COOKIES',
   },
 
   // ============================================

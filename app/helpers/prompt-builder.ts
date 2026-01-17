@@ -23,16 +23,16 @@ import {
 import { embed, isEmbedderReady } from '@core/embedder';
 
 /** Number of semantic search results to include */
-const SEMANTIC_LIMIT = 5;
+const SEMANTIC_LIMIT = 3;
 
 /** Minimum similarity score to include in semantic results */
-const SEMANTIC_THRESHOLD = 0.3;
+const SEMANTIC_THRESHOLD = 0.4;
 
 /** Number of knowledge entries to inject */
-const KNOWLEDGE_LIMIT = 5;
+const KNOWLEDGE_LIMIT = 3;
 
 /** Minimum score for knowledge to be considered relevant */
-const KNOWLEDGE_THRESHOLD = 0.35;
+const KNOWLEDGE_THRESHOLD = 0.4;
 
 export interface PromptContext {
   /** The user's message content */
@@ -181,8 +181,7 @@ export async function buildFullSystemPrompt(
  */
 function formatSemanticResults(results: SimilarMessage[]): string {
   const lines = results.map((r) => {
-    const age = formatAge(r.timestamp);
-    return `- [${age}] @${r.userName}: "${r.content.substring(0, 150)}${r.content.length > 150 ? '...' : ''}"`;
+    return `- @${r.userName}: "${r.content.substring(0, 150)}${r.content.length > 150 ? '...' : ''}"`;
   });
 
   return `# Relevant Past Messages

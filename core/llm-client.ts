@@ -14,9 +14,21 @@ export type MessageRole = 'system' | 'user' | 'assistant' | 'tool';
 /**
  * Chat message
  */
+export interface ContentPartText {
+  type: 'text';
+  text: string;
+}
+
+export interface ContentPartImageUrl {
+  type: 'image_url';
+  image_url: { url: string };
+}
+
+export type ContentPart = ContentPartText | ContentPartImageUrl;
+
 export interface ChatMessage {
   role: MessageRole;
-  content: string | null;
+  content: string | ContentPart[] | null;
   name?: string;
   /** Tool call ID (for tool responses) */
   tool_call_id?: string;

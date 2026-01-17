@@ -22,6 +22,8 @@ export interface TokensConfig {
   openrouter: string;
   /** Tavily API key (optional, for web search) */
   tavily?: string;
+  /** Instagram cookies (base64 encoded Netscape cookie file) */
+  instagramCookies?: string;
 }
 
 /**

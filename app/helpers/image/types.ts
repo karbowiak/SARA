@@ -42,9 +42,50 @@ export const ASPECT_RATIO_LABELS: Record<AspectRatio, string> = {
 };
 
 /**
- * Supported image resolutions
+ * Supported image resolutions (used by Gemini models)
  */
 export type ImageResolution = '1K' | '2K' | '4K';
+
+/**
+ * OpenAI-specific image size values (WxH pixel dimensions)
+ */
+export type OpenAIImageSize = '1024x1024' | '1024x1536' | '1536x1024' | 'auto';
+
+/**
+ * OpenAI-specific quality values
+ */
+export type OpenAIImageQuality = 'low' | 'medium' | 'high';
+
+/**
+ * Map aspect ratio to OpenAI's supported sizes
+ * OpenAI only supports 3 sizes: square, portrait, landscape
+ */
+export function aspectRatioToOpenAISize(aspectRatio: AspectRatio): OpenAIImageSize {
+  // Portrait ratios (taller than wide)
+  if (['2:3', '3:4', '4:5', '9:16'].includes(aspectRatio)) {
+    return '1024x1536';
+  }
+  // Landscape ratios (wider than tall)
+  if (['3:2', '4:3', '5:4', '16:9', '21:9'].includes(aspectRatio)) {
+    return '1536x1024';
+  }
+  // Square (default)
+  return '1024x1024';
+}
+
+/**
+ * Map resolution to OpenAI's quality parameter
+ */
+export function resolutionToOpenAIQuality(resolution: ImageResolution): OpenAIImageQuality {
+  switch (resolution) {
+    case '4K':
+      return 'high';
+    case '2K':
+      return 'medium';
+    default:
+      return 'low';
+  }
+}
 
 /**
  * Request for image generation

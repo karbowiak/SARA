@@ -25,8 +25,6 @@ Tools are auto-discovered from `app/plugins/ai/tools/` directory. Any file match
 
 | Command | Location | Description |
 |---------|----------|-------------|
-| **/ping** | `app/plugins/slash/ping/` | Simple ping/pong test command |
-| **/demo** | `app/plugins/slash/demo/` | Demo all interaction types (autocomplete, buttons, selects, modals, embeds) |
 | **/memory** | `app/plugins/slash/memory/` | User-facing memory management (add with AI interpretation, list, delete, clear) |
 | **/imagine** | `app/plugins/slash/imagine/` | Generate images with style presets, aspect ratios, and interactive buttons (regenerate, vary, upscale) |
 | **/reminder** | `app/plugins/slash/reminder/` | Set/list/cancel reminders. Delivered via DM with snooze buttons |

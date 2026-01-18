@@ -14,6 +14,7 @@ import { type BotConfig, buildSystemPrompt, getBotConfig, type Platform, type To
 import {
   formatMemoriesForPrompt,
   getMemoriesForPrompt,
+  getRecentMessages,
   getUserByPlatformId,
   type KnowledgeWithScore,
   type SimilarMessage,
@@ -25,14 +26,17 @@ import { embed, isEmbedderReady } from '@core/embedder';
 /** Number of semantic search results to include */
 const SEMANTIC_LIMIT = 3;
 
-/** Minimum similarity score to include in semantic results */
-const SEMANTIC_THRESHOLD = 0.4;
+/** Minimum similarity score to include in semantic results (raised to reduce noise) */
+const SEMANTIC_THRESHOLD = 0.6;
 
 /** Number of knowledge entries to inject */
 const KNOWLEDGE_LIMIT = 3;
 
 /** Minimum score for knowledge to be considered relevant */
-const KNOWLEDGE_THRESHOLD = 0.4;
+const KNOWLEDGE_THRESHOLD = 0.5;
+
+/** Skip semantic search if there are this many recent messages (they're already in history) */
+const SKIP_SEMANTIC_IF_RECENT_MESSAGES = 5;
 
 export interface PromptContext {
   /** The user's message content */
@@ -119,21 +123,34 @@ export async function buildFullSystemPrompt(
     try {
       const queryEmbedding = await embed(context.messageContent);
 
-      // Search relevant past messages
+      // Search relevant past messages (skip if there's enough recent history already)
       if (!context.skipMessageSearch && context.channelId) {
-        const similar = searchSimilar({
-          embedding: queryEmbedding,
-          channelId: context.channelId,
-          limit: SEMANTIC_LIMIT,
-          decayFactor: 0.98,
-          includeBot: false,
-        });
+        // Check if we have enough recent messages - if so, skip semantic search
+        // (those messages are already in conversation history)
+        const recentMessages = getRecentMessages(context.channelId, SKIP_SEMANTIC_IF_RECENT_MESSAGES + 1);
+        const recentCount = recentMessages.filter(
+          (m) => Date.now() - m.created_at < 30 * 60 * 1000, // Last 30 minutes
+        ).length;
 
-        const relevantResults = similar.filter((s) => s.score >= SEMANTIC_THRESHOLD);
-        if (relevantResults.length > 0) {
-          contextParts.push(formatSemanticResults(relevantResults));
-          debug.semanticResultsCount = relevantResults.length;
-          debug.topSemanticScore = relevantResults[0]?.score;
+        if (recentCount < SKIP_SEMANTIC_IF_RECENT_MESSAGES) {
+          const similar = searchSimilar({
+            embedding: queryEmbedding,
+            channelId: context.channelId,
+            limit: SEMANTIC_LIMIT + 5, // Fetch extra to account for deduplication
+            decayFactor: 0.98,
+            includeBot: false,
+          });
+
+          // Deduplicate: exclude messages that are already in recent history
+          const recentMessageIds = new Set(recentMessages.map((m) => m.id));
+          const deduped = similar.filter((s) => !recentMessageIds.has(s.id));
+
+          const relevantResults = deduped.filter((s) => s.score >= SEMANTIC_THRESHOLD).slice(0, SEMANTIC_LIMIT);
+          if (relevantResults.length > 0) {
+            contextParts.push(formatSemanticResults(relevantResults));
+            debug.semanticResultsCount = relevantResults.length;
+            debug.topSemanticScore = relevantResults[0]?.score;
+          }
         }
       }
 

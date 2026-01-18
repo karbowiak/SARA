@@ -8,7 +8,7 @@ For development details, see [AGENTS.md](./AGENTS.md).
 - ✅ Memory system (save/recall/forget/list)
 - ✅ Web search tool (Tavily API)
 - ✅ Message history search (semantic + recent)
-- ✅ Slash commands (/ping, /demo, /memory, /imagine, /reminder, /knowledge, /media)
+- ✅ Slash commands (/memory, /imagine, /reminder, /knowledge, /media)
 - ✅ Image generation (OpenRouter, style presets, reference images)
 - ✅ Thinking tool (reasoning model escalation)
 - ✅ Last seen tool (user activity tracking)

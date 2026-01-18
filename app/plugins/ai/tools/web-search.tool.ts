@@ -6,6 +6,7 @@
 
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getBotConfig } from '@core';
+import { fetcher } from '@core/helpers/fetcher';
 
 export class WebSearchTool implements Tool {
   readonly metadata: ToolMetadata = {
@@ -93,7 +94,7 @@ export class WebSearchTool implements Tool {
     context.logger.info('WebSearchTool executing', { query: params.query, maxResults });
 
     try {
-      const response = await fetch('https://api.tavily.com/search', {
+      const response = await fetcher('https://api.tavily.com/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

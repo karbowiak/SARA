@@ -300,19 +300,6 @@ const config: BotConfig = {
     // ============================================
 
     /**
-     * /ping - Simple latency test
-     */
-    ping: {},
-
-    /**
-     * /demo - Demonstrates bot features
-     * Restricted to admin group
-     */
-    demo: {
-      groups: ['admin'],
-    },
-
-    /**
      * /memory - View/manage user memories
      * Uses subcommand-level access control
      */

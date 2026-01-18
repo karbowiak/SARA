@@ -95,9 +95,8 @@ const config: BotConfig = {
   
   // Plugin configuration (optional - loads all if omitted)
   plugins: {
-    ping: {},                           // Everyone can use
     memory: {},                         // Everyone can use
-    demo: { groups: ['admin'] },        // Admin group only
+    imagine: {},                        // Everyone can use
     admin: { users: ['123456789'] },    // Specific user only
     serveronly: { guilds: ['111222'] }, // Specific guild only
   },
@@ -162,7 +161,7 @@ import { type BotMessage } from '../../../core';
 
 All plugins implement a base interface with `id`, `type`, `load()`, and `unload()`.
 
-**Important:** Plugin IDs should be simple names like `ping`, `memory`, `demo` - not `ping-command` or `memory-plugin`.
+**Important:** Plugin IDs should be simple names like `memory`, `imagine`, `knowledge` - not `memory-command` or `knowledge-plugin`.
 
 ### 1. Message Handler Plugin
 
@@ -350,6 +349,30 @@ export class GreetCommandPlugin implements CommandHandlerPlugin {
 
 export default GreetCommandPlugin;
 ```
+
+### Interaction Patterns (Autocomplete, Buttons, Selects, Modals, Embeds)
+
+Use these patterns as a template when building interactive slash commands:
+
+- **Autocomplete:** listen to `command:autocomplete` and return filtered choices
+- **Buttons:** prefix `customId` (e.g., `mycmd_`) and filter by prefix
+- **Select menus:** filter on `customId` and respond with `interaction.reply(...)`
+- **Modals:** call `invocation.showModal(...)` then handle `interaction:modal`
+- **Embeds:** include `embeds: [BotEmbed]` in command responses; attach components below
+
+Minimal wiring (within `load()`):
+```typescript
+context.eventBus.on('command:received', this.handleCommand.bind(this));
+context.eventBus.on('command:autocomplete', this.handleAutocomplete.bind(this));
+context.eventBus.on('interaction:button', this.handleButton.bind(this));
+context.eventBus.on('interaction:select', this.handleSelect.bind(this));
+context.eventBus.on('interaction:modal', this.handleModal.bind(this));
+```
+
+Key conventions:
+- Use stable `customId` prefixes (`mycmd_*`) to avoid collisions.
+- Prefer `interaction.deferUpdate()` for button clicks that only change UI state.
+- Keep response payloads platform‑agnostic (use `BotEmbed`, `BotButton`, `BotSelect`).
 
 **CommandInvocation Properties:**
 - `commandName: string` - The command name (e.g., 'greet')

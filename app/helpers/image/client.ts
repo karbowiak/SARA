@@ -9,13 +9,18 @@ import { convertToPng, getImageDimensions } from './convert';
 import {
   ASPECT_RATIO_DIMENSIONS,
   type AspectRatio,
+  aspectRatioToOpenAISize,
   type ImageGenerationRequest,
   type ImageGenerationResult,
   type ImageResolution,
+  resolutionToOpenAIQuality,
 } from './types';
 
 /** Default model for image generation */
 const DEFAULT_IMAGE_MODEL = 'google/gemini-2.0-flash-exp:free';
+
+/** Check if debug mode is enabled via CLI flag */
+const isDebugMode = () => process.argv.includes('--debug') || process.argv.includes('-d');
 
 /**
  * Generate an image using OpenRouter's multimodal API
@@ -48,46 +53,72 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
       enhancedPrompt = `${request.style} style: ${request.prompt}`;
     }
 
+    // For OpenAI models, add explicit size/orientation hints to the prompt
+    // since the API size parameter may not be respected through OpenRouter
+    if (isOpenAIImageModel(model) && aspectRatio !== '1:1') {
+      const orientationHint = getOrientationHint(aspectRatio);
+      enhancedPrompt = `[${orientationHint}] ${enhancedPrompt}`;
+    }
+
     // Build message content
     let messageContent: string | Array<{ type: string; text?: string; image_url?: { url: string } }>;
 
     if (request.referenceImageUrl) {
-      // Download and convert reference image to base64
-      const cleanUrl = request.referenceImageUrl.replace(/&amp;/g, '&');
-      const imageResponse = await fetch(cleanUrl);
+      // Try to download and convert reference image to base64
+      // If it fails, fall back to text-only prompt
+      try {
+        const cleanUrl = request.referenceImageUrl.replace(/&amp;/g, '&');
+        const imageResponse = await fetch(cleanUrl, { signal: AbortSignal.timeout(15000) });
 
-      if (!imageResponse.ok) {
-        throw new Error(`Failed to download reference image: ${imageResponse.status}`);
-      }
+        if (!imageResponse.ok) {
+          console.warn(`[ImageClient] Reference image fetch failed: ${imageResponse.status}, proceeding without it`);
+          messageContent = enhancedPrompt;
+        } else {
+          const referenceArrayBuffer = await imageResponse.arrayBuffer();
+          const referenceBuffer = Buffer.from(referenceArrayBuffer);
 
-      const referenceArrayBuffer = await imageResponse.arrayBuffer();
-      const referenceBuffer = Buffer.from(referenceArrayBuffer);
+          // Validate it's actually an image
+          const dims = await getImageDimensions(referenceBuffer);
+          if (!dims) {
+            console.warn('[ImageClient] Reference URL is not a valid image, proceeding without it');
+            messageContent = enhancedPrompt;
+          } else {
+            // If the user didn't specify sizing, preserve the reference image aspect ratio/size
+            if (!userAspectRatio) {
+              aspectRatio = getNearestAspectRatio(dims.width, dims.height);
+            }
+            if (!userResolution) {
+              resolution = getResolutionForDimensions(dims.width, dims.height);
+            }
 
-      // If the user didn't specify sizing, preserve the reference image aspect ratio/size
-      const dims = await getImageDimensions(referenceBuffer);
-      if (dims) {
-        if (!userAspectRatio) {
-          aspectRatio = getNearestAspectRatio(dims.width, dims.height);
+            const pngBuffer = await convertToPng(referenceBuffer);
+            const base64 = pngBuffer.toString('base64');
+            const imageDataUrl = `data:image/png;base64,${base64}`;
+
+            // Multi-modal input: text + reference image
+            messageContent = [
+              { type: 'text', text: enhancedPrompt },
+              { type: 'image_url', image_url: { url: imageDataUrl } },
+            ];
+          }
         }
-        if (!userResolution) {
-          resolution = getResolutionForDimensions(dims.width, dims.height);
-        }
+      } catch (refError) {
+        console.warn('[ImageClient] Failed to process reference image, proceeding without it:', refError);
+        messageContent = enhancedPrompt;
       }
-
-      const pngBuffer = await convertToPng(referenceBuffer);
-      const base64 = pngBuffer.toString('base64');
-      const imageDataUrl = `data:image/png;base64,${base64}`;
-
-      // Multi-modal input: text + reference image
-      messageContent = [
-        { type: 'text', text: enhancedPrompt },
-        { type: 'image_url', image_url: { url: imageDataUrl } },
-      ];
     } else {
       messageContent = enhancedPrompt;
     }
 
     // Call OpenRouter API with image generation config
+    // Build request body with model-specific parameters
+    const requestBody = buildImageRequestBody(model, messageContent, aspectRatio, resolution);
+
+    // Debug: log the request body to verify parameters
+    if (isDebugMode()) {
+      console.log('[ImageClient] Request body:', JSON.stringify(requestBody, null, 2));
+    }
+
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -95,15 +126,7 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
         'Content-Type': 'application/json',
         'HTTP-Referer': 'https://github.com/karbowiak/SARA',
       },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: messageContent }],
-        modalities: ['image', 'text'],
-        image_config: {
-          aspect_ratio: aspectRatio,
-          image_size: resolution,
-        },
-      }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok) {
@@ -178,6 +201,14 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
         throw new Error(`Failed to download generated image: ${imgResponse.status}`);
       }
       imageBuffer = Buffer.from(await imgResponse.arrayBuffer());
+    }
+
+    // Debug: Check actual image dimensions
+    if (isDebugMode()) {
+      const dims = await getImageDimensions(imageBuffer);
+      if (dims) {
+        console.log(`[ImageClient] Actual image dimensions: ${dims.width}x${dims.height}`);
+      }
     }
 
     return {
@@ -280,4 +311,75 @@ function getResolutionForDimensions(width: number, height: number): ImageResolut
   if (maxDim <= 1024) return '1K';
   if (maxDim <= 2048) return '2K';
   return '4K';
+}
+
+/**
+ * Check if a model is an OpenAI image model
+ */
+function isOpenAIImageModel(model: string): boolean {
+  return model.startsWith('openai/') && model.includes('image');
+}
+
+/**
+ * Get a natural language orientation hint for the prompt
+ * This helps OpenAI models understand the desired image shape
+ */
+function getOrientationHint(aspectRatio: AspectRatio): string {
+  // Portrait ratios
+  if (['2:3', '3:4', '4:5', '9:16'].includes(aspectRatio)) {
+    return 'vertical portrait orientation, taller than wide';
+  }
+  // Landscape ratios
+  if (['3:2', '4:3', '5:4', '16:9', '21:9'].includes(aspectRatio)) {
+    return 'horizontal landscape orientation, wider than tall';
+  }
+  // Square
+  return 'square format';
+}
+
+/**
+ * Build the request body with model-specific parameters
+ *
+ * OpenRouter supports provider passthrough via extra_body or direct params.
+ * We try both approaches for OpenAI models.
+ */
+function buildImageRequestBody(
+  model: string,
+  messageContent: string | Array<{ type: string; text?: string; image_url?: { url: string } }>,
+  aspectRatio: AspectRatio,
+  resolution: ImageResolution,
+): Record<string, unknown> {
+  const baseBody = {
+    model,
+    messages: [{ role: 'user', content: messageContent }],
+    modalities: ['image', 'text'],
+  };
+
+  if (isOpenAIImageModel(model)) {
+    // OpenAI models: use native OpenAI parameters
+    // Pass both at root level and via extra_body for maximum compatibility
+    const openAISize = aspectRatioToOpenAISize(aspectRatio);
+    const openAIQuality = resolutionToOpenAIQuality(resolution);
+
+    return {
+      ...baseBody,
+      // Root level (in case OpenRouter passes these through)
+      size: openAISize,
+      quality: openAIQuality,
+      // extra_body for provider passthrough (OpenRouter feature)
+      extra_body: {
+        size: openAISize,
+        quality: openAIQuality,
+      },
+    };
+  }
+
+  // Gemini and other models: use image_config object (officially supported)
+  return {
+    ...baseBody,
+    image_config: {
+      aspect_ratio: aspectRatio,
+      image_size: resolution,
+    },
+  };
 }

@@ -32,8 +32,8 @@ const SEMANTIC_THRESHOLD = 0.6;
 /** Number of knowledge entries to inject */
 const KNOWLEDGE_LIMIT = 3;
 
-/** Minimum score for knowledge to be considered relevant */
-const KNOWLEDGE_THRESHOLD = 0.5;
+/** Minimum score for knowledge to be considered relevant (lower than semantic to catch conversational queries) */
+const KNOWLEDGE_THRESHOLD = 0.35;
 
 /** Skip semantic search if there are this many recent messages (they're already in history) */
 const SKIP_SEMANTIC_IF_RECENT_MESSAGES = 5;
@@ -55,6 +55,8 @@ export interface PromptContext {
   tools?: Tool[];
   /** Additional context to append (e.g., image retry) */
   additionalContext?: string;
+  /** Pre-formatted channel history to inject into system prompt */
+  channelHistory?: string;
   /** Skip semantic message search */
   skipMessageSearch?: boolean;
   /** Skip knowledge base search */
@@ -73,6 +75,7 @@ export interface BuiltPrompt {
     memoriesCount: number;
     knowledgeCount: number;
     semanticResultsCount: number;
+    historyCount: number;
     topKnowledgeScore?: number;
     topSemanticScore?: number;
   };
@@ -91,6 +94,7 @@ export async function buildFullSystemPrompt(
     memoriesCount: 0,
     knowledgeCount: 0,
     semanticResultsCount: 0,
+    historyCount: 0,
     topKnowledgeScore: undefined as number | undefined,
     topSemanticScore: undefined as number | undefined,
   };
@@ -174,12 +178,38 @@ export async function buildFullSystemPrompt(
     }
   }
 
-  // 3. Add any additional context provided
+  // 3. Inject channel history as context (NOT as separate LLM turns)
+  if (context.channelHistory) {
+    const historySection = `# Recent Channel Context
+The following messages are recent conversation history for reference. Respond ONLY to the current user message below.
+
+${context.channelHistory}`;
+    contextParts.push(historySection);
+    // Count lines that start with "- " as messages
+    debug.historyCount = (context.channelHistory.match(/^- /gm) || []).length;
+  }
+
+  // 4. Add any additional context provided
   if (context.additionalContext) {
     contextParts.push(context.additionalContext);
   }
 
-  // 4. Build final system prompt
+  // 4b. Encourage tools for extra context instead of guessing
+  if (context.tools && context.tools.length > 0) {
+    const toolNames = new Set(context.tools.map((t) => t.metadata.name));
+    const guidanceLines: string[] = [];
+    if (toolNames.has('channel_history')) {
+      guidanceLines.push('- Use channel_history for prior messages instead of guessing.');
+    }
+    if (toolNames.has('search_knowledge')) {
+      guidanceLines.push('- Use search_knowledge for server-specific info instead of guessing.');
+    }
+    if (guidanceLines.length > 0) {
+      contextParts.push(`# Tool Guidance\n${guidanceLines.join('\n')}`);
+    }
+  }
+
+  // 5. Build final system prompt
   const systemPrompt = buildSystemPrompt(resolvedConfig, {
     platform: context.platform,
     tools: context.tools,
@@ -208,11 +238,18 @@ ${lines.join('\n')}`;
 
 /**
  * Format knowledge base results for injection into system prompt
+ * Long entries are truncated with a hint to use the search_knowledge tool
  */
 function formatKnowledgeResults(results: KnowledgeWithScore[]): string {
+  const MAX_CONTENT_LENGTH = 500;
+
   const lines = results.map((r) => {
     const tags = r.tags.length > 0 ? ` [${r.tags.join(', ')}]` : '';
-    return `- ${r.content}${tags}`;
+    const isTruncated = r.content.length > MAX_CONTENT_LENGTH;
+    const content = isTruncated
+      ? `${r.content.substring(0, MAX_CONTENT_LENGTH)}... [truncated, use search_knowledge tool for full content]`
+      : r.content;
+    return `- ${content}${tags}`;
   });
 
   return `# Server Knowledge Base

@@ -5,7 +5,7 @@ import { buildFullSystemPrompt } from '../../../helpers/prompt-builder';
 import type { ImageProcessor } from './image-processor';
 
 /** Number of recent messages to include in conversation history */
-const HISTORY_LIMIT = 20;
+const HISTORY_LIMIT = 5;
 
 export class ConversationService {
   constructor(
@@ -17,9 +17,8 @@ export class ConversationService {
    * Build chat messages from the incoming message
    *
    * Structure:
-   * 1. System prompt with config, memories, and semantic search results
-   * 2. Proper multi-turn conversation history (user/assistant alternating)
-   * 3. Current user message
+   * 1. System prompt with config, memories, channel history as context, and tools
+   * 2. Current user message only (history is in system prompt, NOT as separate turns)
    */
   async buildMessages(message: BotMessage, tools: Tool[], context: PluginContext): Promise<ChatMessage[]> {
     const config = this.config ?? getBotConfig();
@@ -33,6 +32,9 @@ export class ConversationService {
     // Add image attachment context (if any)
     const imageContext = this.imageProcessor.buildImageAttachmentContext(message);
 
+    // Build channel history as formatted text (NOT as separate LLM turns)
+    const channelHistory = this.buildChannelHistoryContext(message);
+
     // Build system prompt with all context using centralized helper
     const { systemPrompt, debug } = await buildFullSystemPrompt(config, {
       messageContent: message.content,
@@ -42,28 +44,29 @@ export class ConversationService {
       userId: message.author.id,
       userName: message.author.displayName ?? message.author.name,
       tools: tools.length > 0 ? tools : undefined,
+      channelHistory: channelHistory || undefined,
       additionalContext:
         [imageRetryContext, imageContext].filter((part): part is string => Boolean(part)).join('\n\n') || undefined,
     });
 
     // Log what was loaded
-    if (debug.memoriesCount > 0 || debug.knowledgeCount > 0 || debug.semanticResultsCount > 0) {
+    if (
+      debug.memoriesCount > 0 ||
+      debug.historyCount > 0 ||
+      debug.knowledgeCount > 0 ||
+      debug.semanticResultsCount > 0
+    ) {
       context.logger.debug('System prompt context loaded', {
         memories: debug.memoriesCount,
+        history: debug.historyCount,
         knowledge: debug.knowledgeCount,
         semanticResults: debug.semanticResultsCount,
-        topKnowledgeScore: debug.topKnowledgeScore?.toFixed(3),
-        topSemanticScore: debug.topSemanticScore?.toFixed(3),
       });
     }
 
     const messages: ChatMessage[] = [{ role: 'system', content: systemPrompt }];
 
-    // Build proper multi-turn conversation history
-    const historyMessages = this.buildConversationHistory(message);
-    messages.push(...historyMessages);
-
-    // Add current user message
+    // Only add the current user message (history is in system prompt)
     const userContent = await this.buildUserContent(message);
     messages.push({ role: 'user', content: userContent });
 
@@ -71,9 +74,10 @@ export class ConversationService {
   }
 
   /**
-   * Build conversation history from recent messages
+   * Build channel history as formatted text for system prompt injection
+   * Returns a string with each message on a line, or null if no history
    */
-  private buildConversationHistory(currentMessage: BotMessage): ChatMessage[] {
+  private buildChannelHistoryContext(currentMessage: BotMessage): string | null {
     const config = this.config ?? getBotConfig();
     const botName = config?.bot.name ?? 'Bot';
 
@@ -87,36 +91,29 @@ export class ConversationService {
         .slice(0, HISTORY_LIMIT)
         .reverse();
 
-      if (history.length === 0) return [];
+      if (history.length === 0) return null;
 
       // Filter messages older than 2 hours
       const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
       const cutoffTime = Date.now() - TWO_HOURS_MS;
 
-      const messages: ChatMessage[] = [];
+      const lines: string[] = [];
 
       for (const msg of history) {
         // Skip old messages
         if (msg.created_at < cutoffTime) continue;
 
         const isBot = Boolean(msg.is_bot);
-        const role: 'user' | 'assistant' = isBot ? 'assistant' : 'user';
         const userName = isBot ? botName : (msg.display_name ?? msg.username ?? 'Unknown');
 
-        // Format message with author prefix for user messages (helps AI know who said what)
-        const formattedContent = isBot ? msg.content : `@${userName}: ${msg.content}`;
-
-        // Keep each message separate for group chat flow
-        messages.push({
-          role,
-          content: formattedContent,
-        });
+        // Format: "- @Username: message content" or "- @BotName: response"
+        lines.push(`- @${userName}: ${msg.content}`);
       }
 
-      return messages;
+      return lines.length > 0 ? lines.join('\n') : null;
     } catch (error) {
-      console.error('[ConversationService] Conversation history fetch error:', error);
-      return [];
+      console.error('[ConversationService] Channel history fetch error:', error);
+      return null;
     }
   }
 

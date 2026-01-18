@@ -133,6 +133,16 @@ export type PluginsConfig = Record<string, FeatureAccess>;
 export type ToolsConfig = Record<string, FeatureAccess>;
 
 /**
+ * Guild whitelist configuration
+ */
+export interface GuildsConfig {
+  /** If set, only these guild IDs are allowed. Bot leaves all others. */
+  whitelist?: string[];
+  /** Message(s) to send before leaving unauthorized guilds. If array, picks one at random. */
+  unauthorizedMessages?: string | string[];
+}
+
+/**
  * Complete bot configuration
  */
 export interface BotConfig {
@@ -150,6 +160,8 @@ export interface BotConfig {
   plugins?: PluginsConfig;
   /** Tools to load and their access config */
   tools?: ToolsConfig;
+  /** Guild whitelist configuration (optional - if not set, all guilds allowed) */
+  guilds?: GuildsConfig;
 }
 
 // ============================================

@@ -28,7 +28,7 @@ import { ResponseHandler } from './services/response-handler';
 const FALLBACK_MODEL = 'x-ai/grok-4.1-fast';
 
 /** Number of recent messages to include in conversation history */
-const HISTORY_LIMIT = 20;
+const HISTORY_LIMIT = 5;
 
 export class AIPlugin implements MessageHandlerPlugin {
   readonly id = 'ai';

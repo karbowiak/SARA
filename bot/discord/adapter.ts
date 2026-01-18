@@ -28,6 +28,7 @@ import {
   type ModalSubmitInteraction as DiscordModalSubmitInteraction,
   Events,
   GatewayIntentBits,
+  type Guild,
   type Interaction,
   type Message,
   type MessageActionRowComponentBuilder,
@@ -135,15 +136,82 @@ export class DiscordAdapter {
   }
 
   // ============================================
+  // Guild Whitelist
+  // ============================================
+
+  /**
+   * Check if a guild is allowed based on whitelist config
+   */
+  private isGuildAllowed(guildId: string): boolean {
+    const whitelist = this.config?.guilds?.whitelist;
+    if (!whitelist || whitelist.length === 0) return true; // No whitelist = all allowed
+    return whitelist.includes(guildId);
+  }
+
+  /**
+   * Leave an unauthorized guild, optionally sending a message first
+   */
+  private async leaveUnauthorizedGuild(guild: Guild): Promise<void> {
+    this.logger.warn(`Leaving unauthorized guild: ${guild.name} (${guild.id})`);
+
+    // Try to send message to first available text channel
+    const messages = this.config?.guilds?.unauthorizedMessages;
+    if (messages) {
+      // Pick a random message if array, otherwise use the single string
+      const message = Array.isArray(messages) ? messages[Math.floor(Math.random() * messages.length)] : messages;
+
+      for (const [, channel] of guild.channels.cache) {
+        if (channel.isTextBased() && 'send' in channel) {
+          try {
+            await channel.send(message);
+            break;
+          } catch {
+            // Ignore errors - we might not have permission
+          }
+        }
+      }
+    }
+
+    try {
+      await guild.leave();
+      this.logger.info(`Left unauthorized guild: ${guild.name} (${guild.id})`);
+    } catch (error) {
+      this.logger.error(`Failed to leave guild: ${guild.name} (${guild.id})`, {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  /**
+   * Check all cached guilds and leave unauthorized ones
+   */
+  private async enforceGuildWhitelist(): Promise<void> {
+    const whitelist = this.config?.guilds?.whitelist;
+    if (!whitelist || whitelist.length === 0) {
+      this.logger.debug('No guild whitelist configured, all guilds allowed');
+      return;
+    }
+
+    for (const [guildId, guild] of this.client.guilds.cache) {
+      if (!this.isGuildAllowed(guildId)) {
+        await this.leaveUnauthorizedGuild(guild);
+      }
+    }
+  }
+
+  // ============================================
   // Incoming Events (Discord → EventBus)
   // ============================================
 
   private setupIncomingEvents(): void {
     // Ready
-    this.client.once(Events.ClientReady, (client) => {
+    this.client.once(Events.ClientReady, async (client) => {
       this.logger.info(`Discord connected as ${client.user.tag}`);
 
-      // Cache upload limits for all guilds
+      // Enforce guild whitelist first (leave unauthorized guilds)
+      await this.enforceGuildWhitelist();
+
+      // Cache upload limits for all remaining guilds
       for (const [guildId, guild] of client.guilds.cache) {
         this.cacheGuildUploadLimit(guildId, guild.premiumTier);
       }
@@ -189,8 +257,14 @@ export class DiscordAdapter {
       this.updateUserNamesAcrossGuilds(newUser.id, prev, next);
     });
 
-    // Guild joined - cache upload limit
-    this.client.on(Events.GuildCreate, (guild) => {
+    // Guild joined - check whitelist and cache upload limit
+    this.client.on(Events.GuildCreate, async (guild) => {
+      // Check whitelist first
+      if (!this.isGuildAllowed(guild.id)) {
+        await this.leaveUnauthorizedGuild(guild);
+        return;
+      }
+
       this.cacheGuildUploadLimit(guild.id, guild.premiumTier);
       this.logger.info(`Joined guild: ${guild.name} (${guild.id})`);
     });

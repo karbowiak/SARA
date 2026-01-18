@@ -6,6 +6,7 @@
  *   bun cli prompt "what is love?"          - Simulate a query with full context
  *   bun cli prompt --platform=slack         - Show prompt for specific platform
  *   bun cli prompt --tools                  - Include tool descriptions
+ *   bun cli prompt --full                   - Show full message array sent to the LLM
  */
 
 import { Command, loadBotConfig, type Platform, type Tool } from '@core';
@@ -17,6 +18,7 @@ import { buildFullSystemPrompt } from '../helpers/prompt-builder';
 const DEFAULT_GUILD_ID = '442642549971353621';
 const DEFAULT_CHANNEL_ID = '1214874823063502898';
 const DEFAULT_USER_ID = '123456789';
+const HISTORY_LIMIT = 5;
 
 export default class PromptCommand extends Command {
   static override signature = `
@@ -28,9 +30,11 @@ export default class PromptCommand extends Command {
     {--channel= : Override channel ID}
     {--guild= : Override guild ID}
     {--user= : Override user ID (for memory lookup)}
+    {--username= : Override user display name}
     {--skip-memories : Skip user memory lookup}
-    {--skip-knowledge : Skip knowledge base search}
-    {--skip-messages : Skip semantic message search}
+    {--with-knowledge : Include knowledge base search}
+    {--with-messages : Include semantic message search}
+    {--full : Print the full LLM messages array}
   `;
   static override description = 'Preview the generated system prompt or simulate a query with context';
 
@@ -42,9 +46,11 @@ export default class PromptCommand extends Command {
     const channelId = (this.option('channel') as string) || DEFAULT_CHANNEL_ID;
     const guildId = (this.option('guild') as string) || DEFAULT_GUILD_ID;
     const userId = (this.option('user') as string) || DEFAULT_USER_ID;
+    const userName = (this.option('username') as string) || 'TestUser';
     const skipMemories = this.option('skip-memories') as boolean;
-    const skipKnowledge = this.option('skip-knowledge') as boolean;
-    const skipMessages = this.option('skip-messages') as boolean;
+    const includeKnowledge = this.option('with-knowledge') as boolean;
+    const includeMessages = this.option('with-messages') as boolean;
+    const showFull = this.option('full') as boolean;
 
     // Initialize database and embedder
     initDatabase();
@@ -105,25 +111,34 @@ export default class PromptCommand extends Command {
 
     // Build the system prompt using centralized helper
     const messageContent = query ?? 'Hello!';
+
+    // Build channel history as formatted text (matches ConversationService)
+    const recentMessages = getRecentMessages(channelId, HISTORY_LIMIT + 1);
+    const historyLines: string[] = [];
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    const cutoffTime = Date.now() - TWO_HOURS_MS;
+
+    for (const msg of recentMessages.reverse()) {
+      if (msg.created_at < cutoffTime) continue;
+      const isBot = Boolean(msg.is_bot);
+      const name = isBot ? (config.bot.name ?? 'Bot') : (msg.display_name ?? msg.username ?? 'Unknown');
+      historyLines.push(`- @${name}: ${msg.content}`);
+    }
+
+    const channelHistory = historyLines.length > 0 ? historyLines.join('\n') : undefined;
+
     const { systemPrompt, contextParts, debug } = await buildFullSystemPrompt(config, {
       messageContent,
       platform,
       guildId,
       channelId,
       userId,
-      userName: 'TestUser',
+      userName,
       tools: mockTools,
       skipMemories,
-      skipKnowledgeSearch: skipKnowledge,
-      skipMessageSearch: skipMessages,
-    });
-
-    // Get recent history for display
-    const recentMessages = getRecentMessages(channelId, 20);
-    const historyMessages = recentMessages.reverse().map((msg) => {
-      const isBot = Boolean(msg.is_bot);
-      const prefix = isBot ? '' : `@${msg.username}: `;
-      return `[${isBot ? 'assistant' : 'user'}] ${prefix}${msg.content}`;
+      skipKnowledgeSearch: !includeKnowledge,
+      skipMessageSearch: !includeMessages,
+      channelHistory,
     });
 
     // Output
@@ -144,36 +159,45 @@ export default class PromptCommand extends Command {
       this.info(`Context Parts (${contextParts.length})`);
       console.log('─'.repeat(60));
       this.comment(`Memories: ${debug.memoriesCount}`);
-      this.comment(
-        `Knowledge: ${debug.knowledgeCount}${debug.topKnowledgeScore ? ` (top: ${(debug.topKnowledgeScore * 100).toFixed(0)}%)` : ''}`,
-      );
-      this.comment(
-        `Semantic results: ${debug.semanticResultsCount}${debug.topSemanticScore ? ` (top: ${(debug.topSemanticScore * 100).toFixed(0)}%)` : ''}`,
-      );
-      console.log('');
-    }
-
-    if (historyMessages.length > 0) {
-      console.log('═'.repeat(60));
-      this.info(`Recent History (${historyMessages.length} messages)`);
-      console.log('─'.repeat(60));
-      for (const msg of historyMessages) {
-        console.log(msg);
+      this.comment(`History: ${debug.historyCount} messages`);
+      if (debug.knowledgeCount > 0) {
+        this.comment(
+          `Knowledge: ${debug.knowledgeCount}${debug.topKnowledgeScore ? ` (top: ${(debug.topKnowledgeScore * 100).toFixed(0)}%)` : ''}`,
+        );
+      }
+      if (debug.semanticResultsCount > 0) {
+        this.comment(
+          `Semantic results: ${debug.semanticResultsCount}${debug.topSemanticScore ? ` (top: ${(debug.topSemanticScore * 100).toFixed(0)}%)` : ''}`,
+        );
       }
       console.log('');
     }
 
     if (query) {
       console.log('═'.repeat(60));
-      this.info('Current Query');
+      this.info('Current Query (this is the only user message sent to the LLM)');
       console.log('─'.repeat(60));
-      console.log(`[user] @TestUser: ${query}`);
+      console.log(`[user] @${userName}: ${query}`);
+      console.log('');
+    }
+
+    if (showFull) {
+      // Now matches actual bot behavior: system + single user message
+      const fullMessages = [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `@${userName}: ${messageContent}` },
+      ];
+
+      console.log('═'.repeat(60));
+      this.info('Full LLM Messages (exactly what the bot sends)');
+      console.log('─'.repeat(60));
+      console.log(JSON.stringify(fullMessages, null, 2));
       console.log('');
     }
 
     console.log('═'.repeat(60));
     this.info(`System prompt: ${systemPrompt.length} chars`);
-    this.info(`History: ${historyMessages.length} messages`);
+    this.info(`History in prompt: ${debug.historyCount} messages`);
     if (query) {
       this.info(`Query: "${query.substring(0, 50)}${query.length > 50 ? '...' : ''}"`);
     }

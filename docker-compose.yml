@@ -1,0 +1,20 @@
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sara-bot
+    restart: unless-stopped
+    volumes:
+      # Persist SQLite database
+      - ./data:/app/data
+      # Mount config file (required - contains secrets)
+      - ./config/config.ts:/app/config/config.ts:ro
+    environment:
+      # Bot type: discord or slack
+      - TYPE=discord
+      # Path to config file inside container
+      - CONFIGPATH=config/config.ts
+    # Override TYPE to run a different adapter
+    # environment:
+    #   - TYPE=slack

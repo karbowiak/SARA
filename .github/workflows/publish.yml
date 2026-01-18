@@ -2,7 +2,7 @@ name: Build and Push Container
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
     paths-ignore:
       - '*.md'
       - '.github/dependabot.yml'

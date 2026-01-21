@@ -47,6 +47,10 @@ export interface PromptContext {
   guildId?: string;
   /** Channel ID (required for semantic message search) */
   channelId?: string;
+  /** Channel name (for context) */
+  channelName?: string;
+  /** Channel topic/description set by admins */
+  channelTopic?: string;
   /** User's platform ID (required for memories) */
   userId?: string;
   /** User's display name (for formatting) */
@@ -178,7 +182,19 @@ export async function buildFullSystemPrompt(
     }
   }
 
-  // 3. Inject channel history as context (NOT as separate LLM turns)
+  // 3. Add channel context if we have name or topic
+  if (context.channelName || context.channelTopic) {
+    let channelSection = '# Channel Context';
+    if (context.channelName) {
+      channelSection += `\n- Channel: #${context.channelName}`;
+    }
+    if (context.channelTopic) {
+      channelSection += `\n- Topic: ${context.channelTopic}`;
+    }
+    contextParts.push(channelSection);
+  }
+
+  // 4. Inject channel history as context (NOT as separate LLM turns)
   if (context.channelHistory) {
     const historySection = `# Recent Channel Context
 The following messages are recent conversation history for reference. Respond ONLY to the current user message below.
@@ -189,12 +205,12 @@ ${context.channelHistory}`;
     debug.historyCount = (context.channelHistory.match(/^- /gm) || []).length;
   }
 
-  // 4. Add any additional context provided
+  // 5. Add any additional context provided
   if (context.additionalContext) {
     contextParts.push(context.additionalContext);
   }
 
-  // 4b. Encourage tools for extra context instead of guessing
+  // 5b. Encourage tools for extra context instead of guessing
   if (context.tools && context.tools.length > 0) {
     const toolNames = new Set(context.tools.map((t) => t.metadata.name));
     const guidanceLines: string[] = [];
@@ -209,7 +225,7 @@ ${context.channelHistory}`;
     }
   }
 
-  // 5. Build final system prompt
+  // 6. Build final system prompt
   const systemPrompt = buildSystemPrompt(resolvedConfig, {
     platform: context.platform,
     tools: context.tools,

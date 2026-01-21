@@ -636,6 +636,7 @@ export class SlackAdapter {
       id: slackChannel.id,
       name: slackChannel.name,
       type,
+      topic: slackChannel.topic?.value ?? undefined,
     };
   }
 

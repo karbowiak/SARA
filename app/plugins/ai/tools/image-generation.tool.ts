@@ -5,14 +5,12 @@
  * Uses the shared image generation helper.
  */
 
-import { type AspectRatio, generateImage, type ImageResolution } from '@app/helpers/image';
+import { generateImage } from '@app/helpers/image';
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getBotConfig } from '@core';
 
 interface ImageGenerationArgs {
   prompt: string;
-  aspect_ratio?: AspectRatio;
-  resolution?: ImageResolution;
   style?: string;
   reference_image_url?: string;
 }
@@ -53,7 +51,7 @@ export class ImageGenerationTool implements Tool {
     type: 'function',
     name: 'image_generation',
     description:
-      'Generate an image from a text prompt, optionally using a reference image. Can modify existing images or create new ones. The generated image will be sent directly to the chat.\n\nCRITICAL SAFETY RESTRICTIONS: This tool MUST NOT be used for: nudity, implied nudity, sexual content, sex acts, fetish content, pornographic framing, or any requests whose main intent is sexual arousal. If a request violates these rules, refuse WITHOUT calling this tool and offer safe alternatives.',
+      'Generate an image from a text prompt, optionally using a reference image. Can modify existing images or create new ones. The generated image will be sent directly to the chat. Images are always square (1:1 aspect ratio).',
     parameters: {
       type: 'object',
       properties: {
@@ -61,16 +59,6 @@ export class ImageGenerationTool implements Tool {
           type: 'string',
           description:
             'Detailed description of the image to generate or how to modify the reference image. Be specific and descriptive.',
-        },
-        aspect_ratio: {
-          type: 'string',
-          description: 'Aspect ratio of the image',
-          enum: ['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9'],
-        },
-        resolution: {
-          type: 'string',
-          description: 'Image resolution/quality level',
-          enum: ['1K', '2K', '4K'],
         },
         style: {
           type: 'string',
@@ -115,17 +103,13 @@ export class ImageGenerationTool implements Tool {
 
       context.logger.info('[ImageGenerationTool] Generating image', {
         prompt: params.prompt,
-        aspectRatio: params.aspect_ratio,
-        resolution: params.resolution,
         style: params.style,
         hasReferenceImage: !!params.reference_image_url,
       });
 
-      // Use shared image generation client
+      // Use shared image generation client (always 1:1 for gpt-5-image-mini)
       const result = await generateImage({
         prompt: params.prompt,
-        aspectRatio: params.aspect_ratio,
-        resolution: params.resolution,
         style: params.style,
         referenceImageUrl: params.reference_image_url,
       });

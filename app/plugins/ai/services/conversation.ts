@@ -41,6 +41,8 @@ export class ConversationService {
       platform: message.platform,
       guildId: message.guildId,
       channelId: message.channel.id,
+      channelName: message.channel.name,
+      channelTopic: message.channel.topic,
       userId: message.author.id,
       userName: message.author.displayName ?? message.author.name,
       tools: tools.length > 0 ? tools : undefined,

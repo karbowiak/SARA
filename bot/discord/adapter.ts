@@ -829,6 +829,7 @@ export class DiscordAdapter {
       id: channel.id,
       name: 'name' in channel ? (channel.name ?? undefined) : undefined,
       type: message.guildId ? 'guild' : 'dm',
+      topic: 'topic' in channel ? (channel.topic ?? undefined) : undefined,
     };
   }
 
@@ -958,6 +959,8 @@ export class DiscordAdapter {
           interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? undefined) : undefined,
         type: interaction.guildId ? 'guild' : 'dm',
         nsfw: interaction.channel && 'nsfw' in interaction.channel ? (interaction.channel.nsfw ?? false) : false,
+        topic:
+          interaction.channel && 'topic' in interaction.channel ? (interaction.channel.topic ?? undefined) : undefined,
       },
       guildId: interaction.guildId ?? undefined,
       platform: 'discord',
@@ -1080,6 +1083,8 @@ export class DiscordAdapter {
         name:
           interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? undefined) : undefined,
         type: interaction.guildId ? 'guild' : 'dm',
+        topic:
+          interaction.channel && 'topic' in interaction.channel ? (interaction.channel.topic ?? undefined) : undefined,
       },
       guildId: interaction.guildId ?? undefined,
       platform: 'discord',
@@ -1106,6 +1111,8 @@ export class DiscordAdapter {
         name:
           interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? undefined) : undefined,
         type: interaction.guildId ? 'guild' : 'dm',
+        topic:
+          interaction.channel && 'topic' in interaction.channel ? (interaction.channel.topic ?? undefined) : undefined,
       },
       messageId: interaction.message.id,
       guildId: interaction.guildId ?? undefined,
@@ -1149,6 +1156,8 @@ export class DiscordAdapter {
         name:
           interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? undefined) : undefined,
         type: interaction.guildId ? 'guild' : 'dm',
+        topic:
+          interaction.channel && 'topic' in interaction.channel ? (interaction.channel.topic ?? undefined) : undefined,
       },
       messageId: interaction.message.id,
       guildId: interaction.guildId ?? undefined,
@@ -1200,6 +1209,8 @@ export class DiscordAdapter {
         name:
           interaction.channel && 'name' in interaction.channel ? (interaction.channel.name ?? undefined) : undefined,
         type: interaction.guildId ? 'guild' : 'dm',
+        topic:
+          interaction.channel && 'topic' in interaction.channel ? (interaction.channel.topic ?? undefined) : undefined,
       },
       guildId: interaction.guildId ?? undefined,
       platform: 'discord',

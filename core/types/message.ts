@@ -38,6 +38,8 @@ export interface BotChannel {
   guildName?: string;
   /** Whether the channel is age-restricted (NSFW) */
   nsfw?: boolean;
+  /** Channel topic/description set by admins */
+  topic?: string;
 }
 
 /**

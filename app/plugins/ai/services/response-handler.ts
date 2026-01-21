@@ -124,9 +124,19 @@ export class ResponseHandler {
           durationMs,
         });
 
+        // Format error messages more descriptively for the LLM
+        const toolResultContent = result.success
+          ? result.data
+          : {
+              error: true,
+              type: result.error?.type ?? 'unknown_error',
+              message: result.error?.message ?? 'Tool execution failed',
+              suggestion: 'Please inform the user about this error and suggest alternatives if possible.',
+            };
+
         messages.push({
           role: 'tool',
-          content: JSON.stringify(result.success ? result.data : result.error),
+          content: JSON.stringify(toolResultContent),
           tool_call_id: toolCall.id,
         });
       } catch (error) {
@@ -156,6 +166,18 @@ export class ResponseHandler {
       }
     }
 
+    // Track if any tools failed
+    const failedTools = messages
+      .filter((m) => m.role === 'tool')
+      .filter((m) => {
+        try {
+          const parsed = JSON.parse(m.content ?? '{}');
+          return parsed.error === true || parsed.error;
+        } catch {
+          return false;
+        }
+      });
+
     // Get final response after tool execution
     context.logger.debug('Getting final response after tool calls');
     const response = await this.llm.chat({ messages });
@@ -163,6 +185,29 @@ export class ResponseHandler {
 
     if (content) {
       await this.sendResponse(message, content, context);
+    } else if (failedTools.length > 0) {
+      // LLM didn't respond but tools failed - send fallback error
+      const errorMessages = failedTools
+        .map((m) => {
+          try {
+            const parsed = JSON.parse(m.content ?? '{}');
+            return parsed.message ?? 'Unknown error';
+          } catch {
+            return 'Unknown error';
+          }
+        })
+        .join('; ');
+
+      context.logger.warn('LLM returned no content after tool failures', {
+        failedToolCount: failedTools.length,
+        errors: errorMessages,
+      });
+
+      await this.sendResponse(
+        message,
+        `❌ The tool encountered an error: ${errorMessages}\n\nPlease try again with a different approach.`,
+        context,
+      );
     }
 
     return { toolsUsed, content };

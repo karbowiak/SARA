@@ -48,8 +48,10 @@ export interface BotIdentityConfig {
 export interface AIBehaviorConfig {
   /** Default model to use */
   defaultModel?: string;
-  /** Model for image generation */
+  /** Model for image generation (used by AI tool) */
   imageModel?: string;
+  /** Additional image models available in /imagine command */
+  imageModels?: string[];
   /** Model for deep reasoning/thinking */
   reasoningModel?: string;
   /** Temperature for responses (0-2) */

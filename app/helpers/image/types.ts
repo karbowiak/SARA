@@ -101,6 +101,8 @@ export interface ImageGenerationRequest {
   referenceImageUrl?: string;
   /** Optional style hint */
   style?: string;
+  /** Model to use for generation (optional, uses config default) */
+  model?: string;
 }
 
 /**

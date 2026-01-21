@@ -40,7 +40,8 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
     };
   }
 
-  const model = config?.ai?.imageModel ?? DEFAULT_IMAGE_MODEL;
+  // Use model from request, or fall back to config default
+  const model = request.model ?? config?.ai?.imageModel ?? DEFAULT_IMAGE_MODEL;
   const userAspectRatio = request.aspectRatio;
   const userResolution = request.resolution;
   let aspectRatio: AspectRatio = request.aspectRatio ?? '1:1';
@@ -136,12 +137,43 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
 
     const data = (await response.json()) as {
       choices?: Array<{
+        error?: {
+          message?: string;
+          code?: number;
+          metadata?: {
+            raw?: { code?: string; message?: string } | string;
+            provider_name?: string;
+          };
+        };
         message?: {
           content?: string | Array<{ type?: string; image_url?: { url?: string }; url?: string }>;
           images?: Array<{ image_url?: { url?: string }; url?: string }>;
         };
       }>;
     };
+
+    // Check for choice-level errors (e.g., OpenAI moderation rejections)
+    const choiceError = data.choices?.[0]?.error;
+    if (choiceError) {
+      // Extract the most descriptive error message
+      let errorMessage = choiceError.message ?? 'Image generation was rejected';
+      const rawMeta = choiceError.metadata?.raw;
+      if (typeof rawMeta === 'object' && rawMeta?.message) {
+        errorMessage = rawMeta.message;
+      } else if (typeof rawMeta === 'string') {
+        try {
+          const parsed = JSON.parse(rawMeta);
+          if (parsed.message) errorMessage = parsed.message;
+          if (parsed.details?.['Moderation Reasons']) {
+            errorMessage += ` (Reasons: ${parsed.details['Moderation Reasons'].join(', ')})`;
+          }
+        } catch {
+          // rawMeta is just a string, might already be descriptive
+        }
+      }
+      console.error('[ImageClient] Provider error:', errorMessage);
+      throw new Error(errorMessage);
+    }
 
     const message = data.choices?.[0]?.message;
     let imageUrl: string | undefined;
@@ -314,7 +346,8 @@ function getResolutionForDimensions(width: number, height: number): ImageResolut
 }
 
 /**
- * Check if a model is an OpenAI image model
+ * Check if a model is an OpenAI image model (gpt-5-image, etc.)
+ * These models have limitations: they don't respect size/aspect ratio params through OpenRouter
  */
 function isOpenAIImageModel(model: string): boolean {
   return model.startsWith('openai/') && model.includes('image');

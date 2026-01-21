@@ -44,17 +44,19 @@ interface ImagineSettings {
   aspect: AspectRatio;
   resolution: ImageResolution;
   style?: string;
+  model?: string;
 }
 
 /**
  * Parse settings from message content
- * Format: "**Prompt:** ...\n**Aspect:** ...\n**Resolution:** ...\n[**Style:** ...]"
+ * Format: "**Prompt:** ...\n**Aspect:** ...\n**Resolution:** ...\n[**Style:** ...]\n[**Model:** ...]"
  */
 function parseSettingsFromContent(content: string): ImagineSettings | null {
   const promptMatch = content.match(/\*\*Prompt:\*\* (.+?)(?:\n|$)/);
   const aspectMatch = content.match(/\*\*Aspect:\*\* (\d+:\d+)/);
   const resolutionMatch = content.match(/\*\*Resolution:\*\* (\d+K)/);
   const styleMatch = content.match(/\*\*Style:\*\* (.+?)(?:\n|$)/);
+  const modelMatch = content.match(/\*\*Model:\*\* (.+?)(?:\n|$)/);
 
   if (!promptMatch || !aspectMatch || !resolutionMatch) {
     return null;
@@ -77,6 +79,7 @@ function parseSettingsFromContent(content: string): ImagineSettings | null {
     aspect: aspect as AspectRatio,
     resolution: resolution as ImageResolution,
     style: styleMatch?.[1]?.trim(),
+    model: modelMatch?.[1]?.trim(),
   };
 }
 
@@ -89,6 +92,9 @@ function formatSettingsContent(settings: ImagineSettings): string {
   content += `**Resolution:** ${settings.resolution}`;
   if (settings.style) {
     content += `\n**Style:** ${settings.style}`;
+  }
+  if (settings.model) {
+    content += `\n**Model:** ${settings.model}`;
   }
   return content;
 }
@@ -133,8 +139,9 @@ export class ImagineCommandPlugin implements CommandHandlerPlugin {
     const aspect = (invocation.args.aspect as AspectRatio) || '1:1';
     const resolution = (invocation.args.resolution as ImageResolution) || '1K';
     const style = invocation.args.style as string | undefined;
+    const model = invocation.args.model as string | undefined;
 
-    const settings: ImagineSettings = { prompt, aspect, resolution, style };
+    const settings: ImagineSettings = { prompt, aspect, resolution, style, model };
 
     // Defer the response (image generation takes time)
     await invocation.defer();
@@ -362,6 +369,7 @@ export class ImagineCommandPlugin implements CommandHandlerPlugin {
         aspectRatio: settings.aspect,
         resolution: settings.resolution,
         style: settings.style,
+        model: settings.model,
       });
 
       if (!result.success || !result.imageBuffer) {
@@ -446,6 +454,7 @@ export class ImagineCommandPlugin implements CommandHandlerPlugin {
         aspectRatio: settings.aspect,
         resolution: settings.resolution,
         style: settings.style,
+        model: settings.model,
       });
 
       if (!result.success || !result.imageBuffer) {

@@ -4,7 +4,7 @@
  * Midjourney-style image generation command with interactive buttons.
  */
 
-import type { SlashCommandDefinition } from '@core';
+import { getBotConfig, type SlashCommandDefinition } from '@core';
 
 /**
  * Predefined style choices for image generation
@@ -37,6 +37,42 @@ export const IMAGE_STYLES = [
   { name: 'Isometric', value: 'isometric view, 3D game art style, clean edges' },
 ] as const;
 
+/**
+ * Get model display name from model ID
+ */
+function getModelDisplayName(modelId: string): string {
+  const parts = modelId.split('/');
+  const name = parts[parts.length - 1] ?? modelId;
+  // Capitalize and clean up
+  return name
+    .replace(/-/g, ' ')
+    .replace(/\./g, ' ')
+    .split(' ')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+/**
+ * Build model choices from config
+ */
+function getModelChoices(): Array<{ name: string; value: string }> {
+  try {
+    const config = getBotConfig();
+    const models = config.ai?.imageModels ?? [];
+    if (models.length === 0) {
+      // Fall back to default if no models configured
+      return [{ name: 'GPT 5 Image Mini', value: 'openai/gpt-5-image-mini' }];
+    }
+    return models.slice(0, 25).map((model) => ({
+      name: getModelDisplayName(model),
+      value: model,
+    }));
+  } catch {
+    // Config not loaded yet, return empty (will use default)
+    return [{ name: 'GPT 5 Image Mini', value: 'openai/gpt-5-image-mini' }];
+  }
+}
+
 export const COMMAND_DEFINITION: SlashCommandDefinition = {
   name: 'imagine',
   description: 'Generate an image from a text prompt',
@@ -46,6 +82,13 @@ export const COMMAND_DEFINITION: SlashCommandDefinition = {
       description: 'Description of the image to generate',
       type: 'string',
       required: true,
+    },
+    {
+      name: 'model',
+      description: 'AI model to use (default: first in list)',
+      type: 'string',
+      required: false,
+      choices: getModelChoices(),
     },
     {
       name: 'style',

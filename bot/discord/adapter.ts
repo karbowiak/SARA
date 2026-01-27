@@ -719,6 +719,7 @@ export class DiscordAdapter {
       this.userDirectoryByGuild.clear();
       this.userAliasesByGuild.clear();
       this.userGuilds.clear();
+      this.userNameIndex.clear();
 
       for (const [, guild] of this.client.guilds.cache) {
         try {
@@ -740,6 +741,9 @@ export class DiscordAdapter {
 
       this.logger.info('Discord user directory refreshed', {
         guilds: this.client.guilds.cache.size,
+        totalUsers: this.userGuilds.size,
+        totalGuildDirectories: this.userDirectoryByGuild.size,
+        userNameIndexSize: this.userNameIndex.size,
       });
     } catch (error) {
       this.logger.error('Failed to refresh Discord user directory', {
@@ -754,6 +758,20 @@ export class DiscordAdapter {
     this.userRefreshTimer = setInterval(() => {
       this.refreshUserDirectory().catch(() => {});
     }, twelveHoursMs);
+
+    // Log cache stats periodically (every 5 minutes)
+    setInterval(
+      () => {
+        const stats = {
+          totalUsers: this.userGuilds.size,
+          totalGuildDirectories: this.userDirectoryByGuild.size,
+          userNameIndexSize: this.userNameIndex.size,
+          guildUploadLimitCache: this.guildUploadLimits.size,
+        };
+        this.logger.debug('[DiscordAdapter] User directory cache stats', stats);
+      },
+      5 * 60 * 1000,
+    );
   }
 
   private resolveUserId(name: string, guildId?: string): string | null {

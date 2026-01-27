@@ -1,0 +1,40 @@
+# Node modules
+node_modules
+
+# Database files
+data/*.db
+data/*.db-*
+
+# Config files (contain secrets)
+config/*
+!config/config.example.ts
+
+# Logs
+logs
+*.log
+
+# Test coverage
+coverage
+*.lcov
+
+# Cache files
+.eslintcache
+.cache
+*.tsbuildinfo
+
+# IDE files
+.vscode
+.idea
+.DS_Store
+
+# Build output
+out
+dist
+*.tgz
+
+# OpenCode
+.opencode
+
+# Tests
+*.test.ts
+tests/

@@ -10,6 +10,8 @@ services:
       - ./data:/app/data
       # Mount config file (required - contains secrets)
       - ./config/config.ts:/app/config/config.ts:ro
+      # Temporary directory for media downloads
+      - bot-temp:/tmp
     environment:
       # Bot type: discord or slack
       - TYPE=discord
@@ -18,3 +20,6 @@ services:
     # Override TYPE to run a different adapter
     # environment:
     #   - TYPE=slack
+
+volumes:
+  bot-temp:

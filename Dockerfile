@@ -4,11 +4,14 @@ WORKDIR /app
 
 # Install build dependencies for native modules (better-sqlite3)
 # and npm for packages that don't work well with bun install scripts
+# Also install yt-dlp and ffmpeg (includes ffprobe) for media handling
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
-    npm
+    npm \
+    yt-dlp \
+    ffmpeg
 
 # Copy package files first (better layer caching)
 COPY package.json bun.lock ./
@@ -27,8 +30,12 @@ FROM oven/bun:alpine AS production
 WORKDIR /app
 
 # Install only runtime dependencies for native modules
+# and media tools (yt-dlp, ffmpeg which includes ffprobe, python3)
 RUN apk add --no-cache \
-    vips
+    vips \
+    yt-dlp \
+    ffmpeg \
+    python3
 
 # Create non-root user for security
 RUN addgroup -g 1001 -S sara && \

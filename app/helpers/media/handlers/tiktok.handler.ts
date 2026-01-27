@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { spawn } from 'bun';
 import type { MediaHandler, MediaResult } from '../types';
 import { ensureTempDirectory, getFileSize } from '../utils/fileUtils';
+import { isTrustedMediaUrl } from '../utils/security';
 
 const TEMP_DIR = '/tmp/tiktok';
 
@@ -19,6 +20,17 @@ export class TikTokHandler implements MediaHandler {
   }
 
   async process(url: string): Promise<MediaResult> {
+    // Validate URL for security
+    const validation = isTrustedMediaUrl(url);
+    if (!validation.valid) {
+      return {
+        success: false,
+        platform: 'tiktok',
+        items: [],
+        error: validation.error || 'Invalid URL',
+      };
+    }
+
     // Reject TikTok Live
     if (url.includes('/live/') || url.includes('/live')) {
       return {
@@ -48,7 +60,19 @@ export class TikTokHandler implements MediaHandler {
         url,
       ]);
 
-      const exitCode = await downloadProc.exited;
+      // Add timeout for download (60 seconds)
+      const timeoutPromise = new Promise<number>((resolve) => {
+        const timeout = setTimeout(() => {
+          downloadProc.kill();
+          resolve(124); // Standard timeout exit code
+        }, 60000);
+
+        downloadProc.exited.then(() => {
+          clearTimeout(timeout);
+        });
+      });
+
+      const exitCode = await Promise.race([downloadProc.exited, timeoutPromise]);
 
       if (exitCode !== 0) {
         const stderr = await new Response(downloadProc.stderr).text();
@@ -65,8 +89,23 @@ export class TikTokHandler implements MediaHandler {
       let metadata: Record<string, unknown> = {};
       try {
         const metaProc = spawn(['yt-dlp', '--dump-json', '--no-warnings', url]);
-        const metaOutput = await new Response(metaProc.stdout).text();
-        if (metaOutput) {
+
+        // Add timeout for metadata (30 seconds)
+        const timeoutPromise = new Promise<Response>((resolve) => {
+          const timeout = setTimeout(() => {
+            metaProc.kill();
+            resolve(new Response(null, { status: 408 })); // Request timeout
+          }, 30000);
+
+          metaProc.exited.then(() => {
+            clearTimeout(timeout);
+          });
+        });
+
+        const metaResponse = await Promise.race([new Response(metaProc.stdout), timeoutPromise]);
+        const metaOutput = await metaResponse.text();
+
+        if (metaOutput && metaResponse.ok) {
           metadata = JSON.parse(metaOutput);
         }
       } catch {

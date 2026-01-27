@@ -6,7 +6,8 @@
  */
 
 import { mkdir, stat, unlink, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, relative, resolve } from 'node:path';
+import { validateUrl } from './security';
 
 /**
  * Ensure a directory exists, creating it recursively if needed
@@ -39,26 +40,53 @@ export async function cleanupFiles(filePaths: string[]): Promise<void> {
  */
 export async function downloadFile(url: string, outputPath: string): Promise<void> {
   try {
-    // Ensure output directory exists
+    // Validate URL for security
+    const validation = validateUrl(url, { allowPrivateIps: false });
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Invalid URL');
+    }
+
+    // Ensure output directory exists and validate output path
     const outputDir = dirname(outputPath);
     await ensureTempDirectory(outputDir);
 
-    // Download file using fetch
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-      },
-    });
+    // Validate output path is within temp directory (path traversal protection)
+    const resolvedPath = resolve(outputPath);
+    const resolvedAllowed = resolve('/tmp');
+    const relPath = relative(resolvedAllowed, resolvedPath);
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    if (relPath.startsWith('..') || relPath.startsWith('/') || relPath.startsWith('\\')) {
+      throw new Error('Invalid output path: path traversal detected');
     }
 
-    // Get file content as ArrayBuffer
-    const buffer = await response.arrayBuffer();
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
-    // Write to file
-    await writeFile(outputPath, new Uint8Array(buffer));
+    try {
+      // Download file using fetch with timeout
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Get file content as ArrayBuffer
+      const buffer = await response.arrayBuffer();
+
+      // Write to file
+      await writeFile(outputPath, new Uint8Array(buffer));
+    } catch (error) {
+      clearTimeout(timeout);
+      throw error;
+    }
   } catch (error) {
     throw new Error(`Failed to download file from ${url}: ${error instanceof Error ? error.message : String(error)}`);
   }

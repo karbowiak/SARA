@@ -5,6 +5,7 @@
  */
 
 import type { MediaHandler, MediaItem, MediaResult } from '../types';
+import { validateUrl } from '../utils/security';
 
 const USER_AGENT =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -18,6 +19,17 @@ export class RedditHandler implements MediaHandler {
 
   async process(url: string): Promise<MediaResult> {
     try {
+      // Validate URL for security
+      const validation = validateUrl(url, { allowPrivateIps: false });
+      if (!validation.valid) {
+        return {
+          success: false,
+          platform: 'reddit',
+          items: [],
+          error: validation.error || 'Invalid URL',
+        };
+      }
+
       // Clean URL and append .json
       const jsonUrl = new URL(url);
       jsonUrl.pathname = `${jsonUrl.pathname.replace(/\/$/, '')}.json`;
@@ -61,7 +73,10 @@ export class RedditHandler implements MediaHandler {
       // Download all media to buffers
       const items: MediaItem[] = [];
       for (let i = 0; i < mediaUrls.length; i++) {
-        const { url: mediaUrl, type } = mediaUrls[i];
+        const mediaUrlObj = mediaUrls[i];
+        if (!mediaUrlObj) continue;
+
+        const { url: mediaUrl, type } = mediaUrlObj;
         try {
           const buffer = await this.downloadToBuffer(mediaUrl);
           const ext = type === 'video' ? 'mp4' : 'jpg';
@@ -140,11 +155,12 @@ export class RedditHandler implements MediaHandler {
     }
     // Handle preview images (fallback)
     else if ((post.preview as { images?: Array<{ source?: { url?: string } }> })?.images?.[0]?.source?.url) {
-      const previewUrl = (post.preview as { images: Array<{ source: { url: string } }> }).images[0].source.url.replace(
-        /&amp;/g,
-        '&',
-      );
-      urls.push({ url: previewUrl, type: 'image' });
+      const images = (post.preview as { images: Array<{ source: { url: string } }> }).images;
+      const firstImage = images[0];
+      if (firstImage?.source?.url) {
+        const previewUrl = firstImage.source.url.replace(/&amp;/g, '&');
+        urls.push({ url: previewUrl, type: 'image' });
+      }
     }
 
     return urls;

@@ -7,10 +7,10 @@
 import { join } from 'node:path';
 import { getBotConfig } from '@core';
 import { spawn } from 'bun';
-// @ts-expect-error - no types for this package
 import { instagramGetUrl } from 'instagram-url-direct';
 import type { MediaHandler, MediaItem, MediaResult } from '../types';
 import { downloadFile, ensureTempDirectory, getFileSize } from '../utils/fileUtils';
+import { isTrustedMediaUrl, sanitizeFilename } from '../utils/security';
 
 const TEMP_DIR = '/tmp/instagram';
 const COOKIE_FILE = '/tmp/instagram_cookies.txt';
@@ -52,6 +52,17 @@ export class InstagramHandler implements MediaHandler {
   }
 
   async process(url: string): Promise<MediaResult> {
+    // Validate URL for security
+    const validation = isTrustedMediaUrl(url);
+    if (!validation.valid) {
+      return {
+        success: false,
+        platform: 'instagram',
+        items: [],
+        error: validation.error || 'Invalid URL',
+      };
+    }
+
     // Ensure cookies are ready (for yt-dlp fallback)
     await this.ensureCookies();
 
@@ -80,8 +91,23 @@ export class InstagramHandler implements MediaHandler {
 
       args.push(url);
       const metaProc = spawn(args);
-      const metaOutput = await new Response(metaProc.stdout).text();
-      if (metaOutput) {
+
+      // Add timeout for metadata (30 seconds)
+      const timeoutPromise = new Promise<Response>((resolve) => {
+        const timeout = setTimeout(() => {
+          metaProc.kill();
+          resolve(new Response(null, { status: 408 })); // Request timeout
+        }, 30000);
+
+        metaProc.exited.then(() => {
+          clearTimeout(timeout);
+        });
+      });
+
+      const metaResponse = await Promise.race([new Response(metaProc.stdout), timeoutPromise]);
+      const metaOutput = await metaResponse.text();
+
+      if (metaOutput && metaResponse.ok) {
         return JSON.parse(metaOutput);
       }
     } catch {
@@ -200,7 +226,7 @@ export class InstagramHandler implements MediaHandler {
         const mediaDetail = mediaDetails?.[i];
         const isVideo = mediaDetail?.type === 'video' || mediaUrl.includes('.mp4') || mediaUrl.includes('video');
         const ext = isVideo ? 'mp4' : 'jpg';
-        const filename = `instagram_${timestamp}_${i}.${ext}`;
+        const filename = sanitizeFilename(`instagram_${timestamp}_${i}.${ext}`);
         const filePath = join(TEMP_DIR, filename);
 
         try {
@@ -272,7 +298,19 @@ export class InstagramHandler implements MediaHandler {
       // Download using yt-dlp
       const downloadProc = spawn(args);
 
-      const exitCode = await downloadProc.exited;
+      // Add timeout for download (60 seconds)
+      const timeoutPromise = new Promise<number>((resolve) => {
+        const timeout = setTimeout(() => {
+          downloadProc.kill();
+          resolve(124); // Standard timeout exit code
+        }, 60000);
+
+        downloadProc.exited.then(() => {
+          clearTimeout(timeout);
+        });
+      });
+
+      const exitCode = await Promise.race([downloadProc.exited, timeoutPromise]);
 
       if (exitCode !== 0) {
         const stderr = await new Response(downloadProc.stderr).text();
@@ -286,7 +324,9 @@ export class InstagramHandler implements MediaHandler {
 
       // Get extension from metadata or default to mp4
       const ext = (metadata.ext as string) || 'mp4';
-      const filePath = join(TEMP_DIR, `instagram_${timestamp}.${ext}`);
+      const safeExt = sanitizeFilename(ext);
+      const filename = sanitizeFilename(`instagram_${timestamp}.${safeExt}`);
+      const filePath = join(TEMP_DIR, filename);
       const fileSize = await getFileSize(filePath);
 
       const items: MediaItem[] = [
@@ -294,7 +334,7 @@ export class InstagramHandler implements MediaHandler {
           type: ext === 'mp4' ? 'video' : 'image',
           url,
           localPath: filePath,
-          filename: `instagram_${timestamp}.${ext}`,
+          filename,
         },
       ];
 

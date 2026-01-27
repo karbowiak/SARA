@@ -12,6 +12,7 @@ import {
   unregisterCommand,
 } from '@core';
 import { type MediaResult, MediaService } from '../../../helpers/media/media.service';
+import { isTrustedMediaUrl } from '../../../helpers/media/utils/security';
 
 export class MediaCommandPlugin implements CommandHandlerPlugin {
   readonly id = 'embedmedia';
@@ -57,6 +58,21 @@ export class MediaCommandPlugin implements CommandHandlerPlugin {
     if (invocation.commandName !== 'embedmedia') return;
 
     const url = invocation.args.url as string;
+
+    // Validate URL for security
+    const validation = isTrustedMediaUrl(url);
+    if (!validation.valid) {
+      try {
+        await invocation.reply({
+          content: `❌ ${validation.error || 'Invalid URL'}`,
+          ephemeral: true,
+        });
+      } catch {
+        // Interaction expired, ignore
+      }
+      return;
+    }
+
     const platform = this.service?.getPlatform(url);
 
     if (!platform) {

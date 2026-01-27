@@ -128,6 +128,7 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
         'HTTP-Referer': 'https://github.com/karbowiak/SARA',
       },
       body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(90000),
     });
 
     if (!response.ok) {
@@ -228,7 +229,9 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
       imageBuffer = Buffer.from(base64Data, 'base64');
     } else {
       // HTTP URL - download it
-      const imgResponse = await fetch(imageUrl);
+      const imgResponse = await fetch(imageUrl, {
+        signal: AbortSignal.timeout(30000),
+      });
       if (!imgResponse.ok) {
         throw new Error(`Failed to download generated image: ${imgResponse.status}`);
       }

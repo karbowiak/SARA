@@ -8,11 +8,10 @@ import type {
   ToolCall,
   ToolExecutionContext,
 } from '@core';
-import { getBotConfig } from '@core';
 
 export class ResponseHandler {
   constructor(
-    private config: BotConfig | undefined,
+    _config: BotConfig | undefined,
     private llm: LLMClient | undefined,
   ) {}
 
@@ -171,7 +170,8 @@ export class ResponseHandler {
       .filter((m) => m.role === 'tool')
       .filter((m) => {
         try {
-          const parsed = JSON.parse(m.content ?? '{}');
+          const contentStr = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+          const parsed = JSON.parse(contentStr ?? '{}');
           return parsed.error === true || parsed.error;
         } catch {
           return false;
@@ -181,33 +181,51 @@ export class ResponseHandler {
     // Get final response after tool execution
     context.logger.debug('Getting final response after tool calls');
     const response = await this.llm.chat({ messages });
-    const content = response.choices[0]?.message.content ?? null;
+    const contentRaw = response.choices[0]?.message.content ?? null;
+    const content = typeof contentRaw === 'string' ? contentRaw : null;
+    const finishReason = response.choices[0]?.finish_reason;
+    const newToolCalls = response.choices[0]?.message.tool_calls;
+
+    context.logger.info('Second LLM call completed', {
+      messageId: message.id,
+      durationMs: Date.now() - Date.now(),
+      hasContent: !!content,
+      finishReason,
+      hasNewToolCalls: !!newToolCalls && newToolCalls.length > 0,
+      newToolCallCount: newToolCalls?.length ?? 0,
+    });
+
+    if (newToolCalls && newToolCalls.length > 0) {
+      context.logger.info('LLM returned more tool calls - recursively handling', {
+        messageId: message.id,
+        newToolCount: newToolCalls.length,
+      });
+
+      const result = await this.handleToolCalls(message, newToolCalls, messages, accessibleTools, context);
+      toolsUsed.push(...result.toolsUsed);
+      return { toolsUsed, content: result.content };
+    }
 
     if (content) {
       await this.sendResponse(message, content, context);
     } else if (failedTools.length > 0) {
-      // LLM didn't respond but tools failed - send fallback error
-      const errorMessages = failedTools
-        .map((m) => {
-          try {
-            const parsed = JSON.parse(m.content ?? '{}');
-            return parsed.message ?? 'Unknown error';
-          } catch {
-            return 'Unknown error';
-          }
-        })
-        .join('; ');
-
       context.logger.warn('LLM returned no content after tool failures', {
         failedToolCount: failedTools.length,
-        errors: errorMessages,
+        errors: 'Tools failed',
       });
 
       await this.sendResponse(
         message,
-        `❌ The tool encountered an error: ${errorMessages}\n\nPlease try again with a different approach.`,
+        '❌ The tool encountered an error. Please try again with a different approach.',
         context,
       );
+    } else {
+      context.logger.error('LLM returned no content with no tool calls', {
+        messageId: message.id,
+        finishReason,
+      });
+
+      await this.sendResponse(message, '❌ I encountered an issue processing your request. Please try again.', context);
     }
 
     return { toolsUsed, content };
@@ -248,7 +266,7 @@ export class ResponseHandler {
       (a) => a.contentType?.startsWith('image/') || /\.(png|jpg|jpeg|gif|webp)$/i.test(a.filename),
     );
 
-    if (images.length > 0) {
+    if (images.length > 0 && images[0]) {
       return { ...args, reference_image_url: images[0].url };
     }
 
@@ -281,7 +299,7 @@ export class ResponseHandler {
     // Extract all @name patterns from content (word characters, including underscores)
     const mentionPattern = /@(\w+)/g;
     const mentionMatches = [...content.matchAll(mentionPattern)];
-    const uniqueNames = [...new Set(mentionMatches.map((m) => m[1].toLowerCase()))];
+    const uniqueNames = [...new Set(mentionMatches.map((m) => m[1]?.toLowerCase() ?? ''))].filter(Boolean);
 
     // For each unique name, try to resolve it if not already known
     for (const name of uniqueNames) {

@@ -5,6 +5,7 @@
  */
 
 import { getBotConfig } from './config';
+import { fetcher } from './helpers/fetcher';
 
 const DEFAULT_MODEL = 'openai/text-embedding-3-large';
 const EMBEDDING_DIM = 3072;
@@ -66,7 +67,7 @@ export async function embed(text: string): Promise<Float32Array> {
     throw new Error('OpenRouter API key not configured');
   }
 
-  const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
+  const response = await fetcher('https://openrouter.ai/api/v1/embeddings', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -77,6 +78,9 @@ export async function embed(text: string): Promise<Float32Array> {
       model: DEFAULT_MODEL,
       input: text,
     }),
+    timeout: 30000,
+    retries: 2,
+    retryDelay: 1000,
   });
 
   if (!response.ok) {
@@ -107,7 +111,7 @@ export async function embedBatch(texts: string[]): Promise<Float32Array[]> {
     throw new Error('OpenRouter API key not configured');
   }
 
-  const response = await fetch('https://openrouter.ai/api/v1/embeddings', {
+  const response = await fetcher('https://openrouter.ai/api/v1/embeddings', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -118,6 +122,9 @@ export async function embedBatch(texts: string[]): Promise<Float32Array[]> {
       model: DEFAULT_MODEL,
       input: texts,
     }),
+    timeout: 30000,
+    retries: 2,
+    retryDelay: 1000,
   });
 
   if (!response.ok) {

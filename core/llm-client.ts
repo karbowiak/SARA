@@ -4,6 +4,7 @@
  * Supports OpenAI-compatible APIs like OpenRouter, Together, Groq, etc.
  */
 
+import { fetcher } from './helpers/fetcher';
 import type { Tool } from './types';
 
 /**
@@ -137,7 +138,7 @@ export class LLMClient {
       defaultModel: config.defaultModel ?? 'anthropic/claude-3.5-sonnet',
       defaultTemperature: config.defaultTemperature ?? 0.7,
       defaultMaxTokens: config.defaultMaxTokens ?? 4096,
-      timeout: config.timeout ?? 60000,
+      timeout: config.timeout ?? 120000,
       headers: config.headers ?? {},
     };
   }
@@ -156,7 +157,7 @@ export class LLMClient {
       stream: false,
     };
 
-    const response = await fetch(`${this.config.baseUrl}/chat/completions`, {
+    const response = await fetcher(`${this.config.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -164,7 +165,9 @@ export class LLMClient {
         ...this.config.headers,
       },
       body: JSON.stringify(fullRequest),
-      signal: AbortSignal.timeout(this.config.timeout),
+      timeout: this.config.timeout,
+      retries: 3,
+      retryDelay: 1000,
     });
 
     if (!response.ok) {
@@ -199,7 +202,11 @@ export class LLMClient {
       temperature: options?.temperature,
     });
 
-    return response.choices[0]?.message.content ?? '';
+    const content = response.choices[0]?.message.content;
+    if (!content) return '';
+
+    // Convert to string if it's a multimodal array
+    return Array.isArray(content) ? content.map((p) => (p.type === 'text' ? p.text : '[image]')).join(' ') : content;
   }
 
   /**

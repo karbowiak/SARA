@@ -68,6 +68,7 @@ export class AIPlugin implements MessageHandlerPlugin {
       defaultModel: this.model,
       defaultTemperature: this.config.ai?.temperature,
       defaultMaxTokens: this.config.ai?.maxTokens,
+      timeout: 180000,
       headers: {
         'HTTP-Referer': 'https://github.com/bot',
         'X-Title': this.config.bot.name,
@@ -187,21 +188,36 @@ export class AIPlugin implements MessageHandlerPlugin {
         );
         toolsUsed.push(...result.toolsUsed);
 
-        // Emit response event
-        context.eventBus.fire('ai:response', {
-          messageId: message.id,
-          content: result.content?.substring(0, 200) ?? '',
-          model: this.model,
-          toolsUsed,
-          totalDurationMs: Date.now() - startTime,
-          promptTokens: response.usage?.prompt_tokens,
-          completionTokens: response.usage?.completion_tokens,
-        });
-        context.logger.debug('[AIPlugin] About to send response', {
-          messageId: message.id,
-          contentLength: result.content?.length ?? 0,
-          content: result.content?.substring(0, 100) ?? '',
-        });
+        // Check if we got a final response from the second LLM call
+        if (result.content) {
+          // Emit response event
+          context.eventBus.fire('ai:response', {
+            messageId: message.id,
+            content: result.content.substring(0, 200),
+            model: this.model,
+            toolsUsed,
+            totalDurationMs: Date.now() - startTime,
+            promptTokens: response.usage?.prompt_tokens,
+            completionTokens: response.usage?.completion_tokens,
+          });
+          context.logger.debug('[AIPlugin] About to send response', {
+            messageId: message.id,
+            contentLength: result.content.length,
+            content: result.content.substring(0, 100),
+          });
+        } else {
+          // Second LLM call failed or returned null - send fallback message
+          context.logger.warn('[AIPlugin] Tool calls completed but no final response generated', {
+            messageId: message.id,
+            toolsUsed,
+          });
+
+          await this.responseHandler.sendResponse(
+            message,
+            '✅ Tool executed successfully, but I encountered an issue generating a final response.',
+            context,
+          );
+        }
 
         return;
       }
@@ -209,12 +225,17 @@ export class AIPlugin implements MessageHandlerPlugin {
       // Send the response
       const content = choice.message.content;
       if (content) {
-        await this.responseHandler.sendResponse(message, content, context);
+        // Convert content to string if it's an array (multimodal)
+        const contentStr = Array.isArray(content)
+          ? content.map((p) => (p.type === 'text' ? p.text : '[image]')).join(' ')
+          : content;
+
+        await this.responseHandler.sendResponse(message, contentStr, context);
 
         // Emit response event
         context.eventBus.fire('ai:response', {
           messageId: message.id,
-          content: content.substring(0, 200),
+          content: contentStr.substring(0, 200),
           model: this.model,
           toolsUsed: [],
           totalDurationMs: Date.now() - startTime,
@@ -244,11 +265,19 @@ export class AIPlugin implements MessageHandlerPlugin {
         durationMs: Date.now() - startTime,
       });
 
-      await this.responseHandler.sendResponse(
-        message,
-        '❌ Sorry, I encountered an error processing your request.',
-        context,
-      );
+      let userMessage = '❌ Sorry, I encountered an error processing your request.';
+
+      const errorMessageLower = errorMessage.toLowerCase();
+
+      if (errorMessageLower.includes('timeout')) {
+        userMessage = '⏱️ Request timed out. Please try again or simplify your request.';
+      } else if (errorMessageLower.includes('rate limit') || errorMessageLower.includes('429')) {
+        userMessage = '⚠️ Rate limited. Please wait a moment and try again.';
+      } else if (errorMessageLower.includes('moderation') || errorMessageLower.includes('content_filter')) {
+        userMessage = '🚫 Your request was filtered by content safety systems.';
+      }
+
+      await this.responseHandler.sendResponse(message, userMessage, context);
     } finally {
       // Always stop typing indicator
       context.eventBus.fire('typing:stop', {
@@ -301,7 +330,7 @@ export class AIPlugin implements MessageHandlerPlugin {
    */
   private injectReferenceImageIfNeeded(args: Record<string, unknown>, message: BotMessage): Record<string, unknown> {
     const hasReference = typeof args.reference_image_url === 'string' && args.reference_image_url.length > 0;
-    const images = this.getImageAttachments(message);
+    const images = this.imageProcessor.getImageAttachments(message);
     const shouldUse = this.shouldUseReferenceImage(message);
     if (!hasReference && (images.length === 0 || !shouldUse)) return args;
 
@@ -325,7 +354,7 @@ export class AIPlugin implements MessageHandlerPlugin {
    * Heuristic: decide if the user is asking to edit/transform the attached image
    */
   private shouldUseReferenceImage(message: BotMessage): boolean {
-    if (this.getImageAttachments(message).length === 0) return false;
+    if (this.imageProcessor.getImageAttachments(message).length === 0) return false;
 
     const text = message.content.toLowerCase();
     if (!text) return true;

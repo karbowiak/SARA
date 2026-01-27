@@ -1245,6 +1245,17 @@ export class DiscordAdapter {
           flags: ephemeral ? MessageFlags.Ephemeral : undefined,
         });
       },
+      followUp: async (response) => {
+        await interaction.followUp({
+          content: response.content,
+          embeds: response.embeds?.map((e) => this.transformEmbed(e)),
+          flags: response.ephemeral ? MessageFlags.Ephemeral : undefined,
+          files: response.attachments?.map((att) => ({
+            attachment: att.data,
+            name: att.filename,
+          })),
+        });
+      },
     };
 
     this.eventBus.fire('interaction:modal', modalInteraction);

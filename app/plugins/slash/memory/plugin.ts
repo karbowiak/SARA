@@ -268,6 +268,9 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
     const validTypes = ['preference', 'fact', 'instruction', 'context'];
     const type: MemoryType = validTypes.includes(typeInput) ? (typeInput as MemoryType) : 'fact';
 
+    // Defer response to avoid timeout during AI processing
+    await interaction.defer(true);
+
     // AI interpretation
     let finalContent = content;
     let wasInterpreted = false;
@@ -309,7 +312,7 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
         response += `_Interpreted for clarity_`;
       }
 
-      await interaction.reply({ content: response, ephemeral: true });
+      await interaction.followUp({ content: response, ephemeral: true });
 
       this.context.logger.info('[Memory] Added via modal', {
         userId: dbUser.id,
@@ -319,7 +322,7 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
       });
     } catch (error) {
       this.context.logger.error('[Memory] Failed to save', { error });
-      await interaction.reply({
+      await interaction.followUp({
         content: '❌ Failed to save memory. Please try again.',
         ephemeral: true,
       });

@@ -21,8 +21,8 @@ export class MemoryTool implements Tool {
   readonly metadata: ToolMetadata = {
     name: 'memory',
     description:
-      'Save, recall, or forget information about users. Use this to remember user preferences, facts, or ongoing context.',
-    version: '1.0.0',
+      'Remember important information about users. You SHOULD proactively use this when users share facts, preferences, or ongoing context.',
+    version: '2.0.0',
     author: 'system',
     keywords: ['remember', 'memory', 'save', 'recall', 'forget', 'preference', 'fact'],
     category: 'utility',
@@ -32,10 +32,23 @@ export class MemoryTool implements Tool {
   readonly schema: ToolSchema = {
     type: 'function',
     name: 'memory',
-    description: `Manage user memories. Use this to:
-- SAVE: Remember something about the user (preferences, facts, instructions, context)
-- RECALL: Search for specific memories about the user
-- FORGET: Remove a memory when the user asks to forget something
+    description: `Manage user memories. You SHOULD proactively use this when users share information worth remembering.
+
+When to AUTO-SAVE (use source="inferred"):
+- User mentions their job, workplace, or profession
+- User shares location, timezone, or hometown
+- User mentions preferences (likes, dislikes, communication style)
+- User discusses ongoing projects, hobbies, or interests
+- Context that should persist across conversations (e.g., "Working on Rust project")
+
+When to EXPLICITLY REMEMBER (use source="explicit"):
+- User directly asks you to remember something
+- User says "remember that..." or similar phrases
+- Critical information the user explicitly emphasizes
+
+Memory limits:
+- Auto-saved (inferred): Max 10 per user per server, oldest auto-removed when limit reached
+- User-saved (explicit): Max 50 per user per server, user must manage
 
 Memory types:
 - "preference": How the user wants to be treated (e.g., "Call me Dave", "Use formal language")
@@ -63,6 +76,12 @@ Memory types:
           type: 'number',
           description: 'Memory ID to forget (required for forget action)',
         },
+        source: {
+          type: 'string',
+          enum: ['explicit', 'inferred'],
+          description:
+            'Use "explicit" when user directly asks to remember, "inferred" when you proactively notice important information',
+        },
       },
       required: ['action'],
       additionalProperties: false,
@@ -76,6 +95,7 @@ Memory types:
       type?: MemoryType;
       content?: string;
       memory_id?: number;
+      source?: 'explicit' | 'inferred';
     };
 
     // Get user's internal ID
@@ -123,7 +143,7 @@ Memory types:
   private async saveMemory(
     userId: number,
     guildId: string,
-    params: { type?: MemoryType; content?: string },
+    params: { type?: MemoryType; content?: string; source?: 'explicit' | 'inferred' },
     context: ToolExecutionContext,
   ): Promise<ToolResult> {
     if (!params.type) {
@@ -152,7 +172,7 @@ Memory types:
         guildId,
         type: params.type,
         content: params.content,
-        source: 'explicit',
+        source: params.source ?? 'explicit',
       });
 
       context.logger.info('Memory saved', {

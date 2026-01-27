@@ -43,15 +43,25 @@ export interface BotIdentityConfig {
 }
 
 /**
+ * Image model configuration
+ */
+export interface ImageModelConfig {
+  /** Model identifier (e.g., 'openai/gpt-5-image-mini') */
+  model: string;
+  /** Description of the model's capabilities */
+  description: string;
+}
+
+/**
  * AI behavior configuration
  */
 export interface AIBehaviorConfig {
   /** Default model to use */
   defaultModel?: string;
-  /** Model for image generation (used by AI tool) */
+  /** Model for image generation (used by AI tool) - deprecated, use imageModels instead */
   imageModel?: string;
-  /** Additional image models available in /imagine command */
-  imageModels?: string[];
+  /** Available image models - first in array is default */
+  imageModels?: ImageModelConfig[];
   /** Model for deep reasoning/thinking */
   reasoningModel?: string;
   /** Temperature for responses (0-2) */

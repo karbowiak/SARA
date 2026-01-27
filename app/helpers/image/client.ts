@@ -16,9 +16,6 @@ import {
   resolutionToOpenAIQuality,
 } from './types';
 
-/** Default model for image generation */
-const DEFAULT_IMAGE_MODEL = 'google/gemini-2.0-flash-exp:free';
-
 /** Check if debug mode is enabled via CLI flag */
 const isDebugMode = () => process.argv.includes('--debug') || process.argv.includes('-d');
 
@@ -40,8 +37,32 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
     };
   }
 
-  // Use model from request, or fall back to config default
-  const model = request.model ?? config?.ai?.imageModel ?? DEFAULT_IMAGE_MODEL;
+  const imageModels = config?.ai?.imageModels;
+
+  if (!imageModels || imageModels.length === 0) {
+    return {
+      success: false,
+      error: 'No image models configured in config.ai.imageModels',
+      model: '',
+      prompt: request.prompt,
+      aspectRatio: request.aspectRatio ?? '1:1',
+      resolution: request.resolution ?? '1K',
+    };
+  }
+
+  // Use model from request, or fall back to config default (first in imageModels array)
+  const firstModel = imageModels[0]?.model;
+  if (!firstModel) {
+    return {
+      success: false,
+      error: 'No image models configured in config.ai.imageModels',
+      model: '',
+      prompt: request.prompt,
+      aspectRatio: request.aspectRatio ?? '1:1',
+      resolution: request.resolution ?? '1K',
+    };
+  }
+  const model = request.model ?? firstModel;
   const userAspectRatio = request.aspectRatio;
   const userResolution = request.resolution;
   let aspectRatio: AspectRatio = request.aspectRatio ?? '1:1';
@@ -258,10 +279,10 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
     return {
       success: false,
       error: error instanceof Error ? error.message : String(error),
-      model,
+      model: model ?? 'unknown',
       prompt: request.prompt,
-      aspectRatio,
-      resolution,
+      aspectRatio: aspectRatio ?? '1:1',
+      resolution: resolution ?? '1K',
     };
   }
 }
@@ -388,7 +409,7 @@ function buildImageRequestBody(
   const baseBody = {
     model,
     messages: [{ role: 'user', content: messageContent }],
-    modalities: ['image', 'text'],
+    modalities: ['image'],
   };
 
   if (isOpenAIImageModel(model)) {

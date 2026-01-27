@@ -54,22 +54,47 @@ function getModelDisplayName(modelId: string): string {
 
 /**
  * Build model choices from config
+ * Returns choices with name in format: "Model Name - description"
+ * Discord limits choice names to 100 characters, so we truncate if needed
  */
 function getModelChoices(): Array<{ name: string; value: string }> {
   try {
     const config = getBotConfig();
     const models = config.ai?.imageModels ?? [];
+
     if (models.length === 0) {
-      // Fall back to default if no models configured
-      return [{ name: 'GPT 5 Image Mini', value: 'openai/gpt-5-image-mini' }];
+      throw new Error(
+        'No image models configured in config.ai.imageModels. Add at least one model to enable image generation.',
+      );
     }
-    return models.slice(0, 25).map((model) => ({
-      name: getModelDisplayName(model),
-      value: model,
-    }));
-  } catch {
-    // Config not loaded yet, return empty (will use default)
-    return [{ name: 'GPT 5 Image Mini', value: 'openai/gpt-5-image-mini' }];
+
+    return models.slice(0, 25).map((model, index) => {
+      const displayName = getModelDisplayName(model.model);
+      const defaultPrefix = index === 0 ? '(Default) ' : '';
+
+      // Discord max length for choice names is 100 chars
+      const MAX_LENGTH = 100;
+      const prefixAndSeparator = defaultPrefix.length + displayName.length + 3; // 3 for " - "
+      const ellipsisLength = 3; // "..."
+
+      // Build full name first
+      const fullName = `${defaultPrefix}${displayName} - ${model.description}`;
+
+      const name =
+        fullName.length > MAX_LENGTH
+          ? `${defaultPrefix}${displayName} - ${model.description.substring(0, MAX_LENGTH - prefixAndSeparator - ellipsisLength)}...`
+          : fullName;
+
+      return {
+        name,
+        value: model.model,
+      };
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('config')) {
+      throw error;
+    }
+    throw new Error('Failed to load image models from config');
   }
 }
 

@@ -177,6 +177,7 @@ export interface ModalSubmitInteraction {
   raw?: unknown;
   reply: (response: CommandResponse) => Promise<void>;
   defer: (ephemeral?: boolean) => Promise<void>;
+  followUp: (response: CommandResponse) => Promise<void>;
 }
 
 /**

@@ -38,3 +38,6 @@ dist
 # Tests
 *.test.ts
 tests/
+
+# Downloads
+downloads/

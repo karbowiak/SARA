@@ -1,17 +1,18 @@
 # Build stage with build tools
-FROM oven/bun:alpine AS builder
+FROM oven/bun:debian AS builder
 WORKDIR /app
 
 # Install build dependencies for native modules (better-sqlite3)
 # and npm for packages that don't work well with bun install scripts
 # Also install yt-dlp and ffmpeg (includes ffprobe) for media handling
-RUN apk add --no-cache \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make \
     g++ \
     npm \
     yt-dlp \
-    ffmpeg
+    ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy package files first (better layer caching)
 COPY package.json bun.lock ./
@@ -25,21 +26,22 @@ RUN npm install --ignore-scripts && \
 # Copy source code
 COPY . .
 
-# Production stage - clean Alpine image
-FROM oven/bun:alpine AS production
+# Production stage - clean Debian image
+FROM oven/bun:debian AS production
 WORKDIR /app
 
 # Install only runtime dependencies for native modules
 # and media tools (yt-dlp, ffmpeg which includes ffprobe, python3)
-RUN apk add --no-cache \
-    vips \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libvips42 \
     yt-dlp \
     ffmpeg \
-    python3
+    python3 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
-RUN addgroup -g 1001 -S sara && \
-    adduser -S sara -u 1001
+RUN groupadd -g 1001 sara && \
+    useradd -u 1001 -g sara -s /bin/sh sara
 
 # Copy built application from builder
 COPY --from=builder /app/node_modules ./node_modules

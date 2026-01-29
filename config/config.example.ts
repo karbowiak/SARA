@@ -339,6 +339,12 @@ const config: BotConfig = {
     knowledge: {},
 
     /**
+     * /profile - User profile management
+     * View, generate, edit profiles that Sara uses for personalized responses
+     */
+    profile: {},
+
+    /**
      * reminder-timer - Background timer that delivers due reminders
      * Required for reminders to work
      */
@@ -560,6 +566,33 @@ const config: BotConfig = {
       //   archive: false, // Show in timeline
       // },
     ],
+  },
+
+  // ============================================
+  // PROFILE SYSTEM (Optional)
+  // ============================================
+  /**
+   * Configure the user profile generation system.
+   * Profiles are automatically generated from message history.
+   */
+  profile: {
+    /** Whether profile system is enabled (default: true) */
+    enabled: true,
+
+    /** Model to use for profile generation (defaults to ai.defaultModel) */
+    // model: 'anthropic/claude-sonnet-4-20250514',
+
+    /** Days of messages to analyze for existing profiles (default: 2) */
+    defaultDays: 2,
+
+    /** Max messages for existing profile updates (default: 500) */
+    maxMessages: 500,
+
+    /** Days of messages to analyze for new profiles (default: 7) */
+    newProfileDays: 7,
+
+    /** Max messages for new profile generation (default: 10000) */
+    newProfileMaxMessages: 10000,
   },
 };
 

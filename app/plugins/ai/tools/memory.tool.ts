@@ -15,6 +15,7 @@ import {
   type MemoryType,
   saveMemory,
   searchMemories,
+  updateMemory,
 } from '@core/database';
 import { z } from 'zod';
 
@@ -48,25 +49,31 @@ When to EXPLICITLY REMEMBER (use source="explicit"):
 - Critical information the user explicitly emphasizes
 
 Memory limits:
-- Auto-saved (inferred): Max 10 per user per server, oldest auto-removed when limit reached
-- User-saved (explicit): Max 50 per user per server, user must manage
+- Auto-saved (inferred): Max 100 per user per server, oldest auto-removed when limit reached
+- User-saved (explicit): Max 100 per user per server, user must manage
 
 Memory types:
 - "preference": How the user wants to be treated (e.g., "Call me Dave", "Use formal language")
 - "fact": Information about the user (e.g., "Works at Google", "Lives in Copenhagen")
 - "instruction": Persistent behavior rules (e.g., "Always respond in Danish")
-- "context": Ongoing topics/projects (e.g., "Working on a Rust project")`,
+- "context": Ongoing topics/projects (e.g., "Working on a Rust project")
+- "profile_update": Flag that the user's profile needs updating (e.g., "User said they moved to Berlin - update facts")
+
+Use 'profile_update' when you notice information that contradicts or should update the user's profile. 
+These are processed during profile regeneration. Example: if a user says "I just moved to Berlin" but 
+their profile says "Lives in Copenhagen", save a profile_update memory noting the change.`,
     parameters: {
       type: 'object',
       properties: {
         action: {
           type: 'string',
-          enum: ['save', 'recall', 'forget'],
-          description: 'The action to perform',
+          enum: ['save', 'recall', 'forget', 'update'],
+          description:
+            'The action to perform: save (create new), recall (search), forget (delete), update (modify existing by ID)',
         },
         type: {
           type: 'string',
-          enum: ['preference', 'fact', 'instruction', 'context'],
+          enum: ['preference', 'fact', 'instruction', 'context', 'profile_update'],
           description: 'Type of memory (required for save)',
         },
         content: {
@@ -75,7 +82,7 @@ Memory types:
         },
         memory_id: {
           type: 'number',
-          description: 'Memory ID to forget (required for forget action)',
+          description: 'Memory ID (required for forget and update actions)',
         },
         source: {
           type: 'string',
@@ -92,8 +99,8 @@ Memory types:
 
   // Zod schema for input validation
   private readonly argsSchema = z.object({
-    action: z.enum(['save', 'recall', 'forget']),
-    type: z.enum(['preference', 'fact', 'instruction', 'context']).optional(),
+    action: z.enum(['save', 'recall', 'forget', 'update']),
+    type: z.enum(['preference', 'fact', 'instruction', 'context', 'profile_update']).optional(),
     content: z.string().max(5000).optional(),
     memory_id: z.number().int().positive().optional(),
     source: z.enum(['explicit', 'inferred']).optional(),
@@ -145,6 +152,8 @@ Memory types:
         return this.recallMemory(user.id, guildId, params.content, context);
       case 'forget':
         return this.forgetMemory(params.memory_id, context);
+      case 'update':
+        return this.updateMemory(params.memory_id, params.content, context);
       default:
         return {
           success: false,
@@ -312,6 +321,63 @@ Memory types:
         success: false,
         error: {
           type: 'forget_error',
+          message: error instanceof Error ? error.message : String(error),
+        },
+      };
+    }
+  }
+
+  private async updateMemory(
+    memoryId: number | undefined,
+    content: string | undefined,
+    context: ToolExecutionContext,
+  ): Promise<ToolResult> {
+    if (memoryId === undefined) {
+      return {
+        success: false,
+        error: {
+          type: 'missing_id',
+          message: 'Memory ID is required for update action',
+        },
+      };
+    }
+
+    if (!content) {
+      return {
+        success: false,
+        error: {
+          type: 'missing_content',
+          message: 'Content is required for update action',
+        },
+      };
+    }
+
+    try {
+      const updated = await updateMemory(memoryId, content);
+
+      if (updated) {
+        context.logger.info('Memory updated', { memoryId });
+        return {
+          success: true,
+          data: {
+            message: `Memory ${memoryId} has been updated`,
+            memory_id: memoryId,
+          },
+        };
+      } else {
+        return {
+          success: false,
+          error: {
+            type: 'not_found',
+            message: `Memory ${memoryId} not found`,
+          },
+        };
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: {
+          type: 'update_error',
           message: error instanceof Error ? error.message : String(error),
         },
       };

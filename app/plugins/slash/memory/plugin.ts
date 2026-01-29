@@ -35,6 +35,7 @@ const TYPE_ICONS: Record<MemoryType, string> = {
   fact: '📝',
   instruction: '📋',
   context: '💭',
+  profile_update: '👤',
 };
 
 // Human-readable type names
@@ -43,6 +44,7 @@ const TYPE_NAMES: Record<MemoryType, string> = {
   fact: 'Fact',
   instruction: 'Instruction',
   context: 'Context',
+  profile_update: 'Profile Update',
 };
 
 const ITEMS_PER_PAGE = 5;
@@ -198,9 +200,9 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
   private async handleAdd(invocation: CommandInvocation, userId: number, guildId: string): Promise<void> {
     // Check memory limit before showing modal
     const { explicit } = getMemoryCount(userId, guildId);
-    if (explicit >= 50) {
+    if (explicit >= 100) {
       await invocation.reply({
-        content: '❌ You have reached the maximum of 50 explicit memories. Use `/memory delete` to remove some first.',
+        content: '❌ You have reached the maximum of 100 explicit memories. Use `/memory delete` to remove some first.',
         ephemeral: true,
       });
       return;
@@ -340,6 +342,7 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
       fact: 'a factual statement about the user',
       instruction: 'an instruction for how to interact with the user',
       context: 'current contextual information',
+      profile_update: 'a flag to update the user profile',
     };
 
     try {

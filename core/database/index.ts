@@ -33,6 +33,8 @@ export {
 export {
   type CreateMemoryParams,
   clearMemories,
+  deleteInferredMemories,
+  deleteMemoriesByType,
   deleteMemory,
   formatMemoriesForPrompt,
   getMemories,
@@ -49,12 +51,16 @@ export {
   updateMemory,
 } from './memories';
 export {
+  formatMessagesForProfile,
+  type GetMessagesForProfileParams,
   getMessageByPlatformId,
   getMessageCount,
+  getMessagesForProfile,
   getRecentMessages,
   insertMessage,
   type MessageInsert,
   messageExists,
+  type ProfileMessage,
   type SearchOptions,
   type SimilarMessage,
   type StoredMessage,
@@ -71,6 +77,17 @@ export {
   reset,
   rollback,
 } from './migrator';
+export {
+  canGenerateProfile,
+  formatProfileForPrompt,
+  getOptOutStatus,
+  getProfile,
+  type ProfileForPrompt,
+  type StoredProfile,
+  setOptOut,
+  type UpsertProfileParams,
+  upsertProfile,
+} from './profiles';
 export {
   type CreateReminderInput,
   cancelReminder,

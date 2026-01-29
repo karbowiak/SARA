@@ -185,6 +185,24 @@ export interface ImmichConfig {
 }
 
 /**
+ * Profile system configuration
+ */
+export interface ProfileConfig {
+  /** Whether profile system is enabled (default: true) */
+  enabled?: boolean;
+  /** Model to use for profile generation (defaults to ai.defaultModel) */
+  model?: string;
+  /** Days of messages to analyze for existing profiles (default: 2) */
+  defaultDays?: number;
+  /** Max messages for existing profile updates (default: 500) */
+  maxMessages?: number;
+  /** Days of messages to analyze for new profiles (default: 7) */
+  newProfileDays?: number;
+  /** Max messages for new profile generation (default: 10000) */
+  newProfileMaxMessages?: number;
+}
+
+/**
  * Complete bot configuration
  */
 export interface BotConfig {
@@ -197,6 +215,7 @@ export interface BotConfig {
   tools?: ToolsConfig;
   guilds?: GuildsConfig;
   immich?: ImmichConfig;
+  profile?: ProfileConfig;
 }
 
 /**
@@ -219,6 +238,10 @@ export interface BotConfig {
   tools?: ToolsConfig;
   /** Guild whitelist configuration (optional - if not set, all guilds allowed) */
   guilds?: GuildsConfig;
+  /** Immich integration configuration (optional) */
+  immich?: ImmichConfig;
+  /** Profile system configuration (optional) */
+  profile?: ProfileConfig;
 }
 
 // ============================================

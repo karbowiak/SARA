@@ -5,7 +5,7 @@
 import { embed, isEmbedderReady } from '../embedder';
 import { cosineSimilarity, getDb } from './client';
 
-export type MemoryType = 'preference' | 'fact' | 'instruction' | 'context';
+export type MemoryType = 'preference' | 'fact' | 'instruction' | 'context' | 'profile_update';
 export type MemorySource = 'explicit' | 'inferred';
 
 export interface StoredMemory {
@@ -33,10 +33,10 @@ export interface SimilarMemory extends StoredMemory {
 }
 
 /** Similarity threshold for deduplication */
-const DEDUP_THRESHOLD = 0.85;
+const DEDUP_THRESHOLD = 0.77;
 
 /** Max inferred memories per user per guild */
-const MAX_INFERRED = 10;
+const MAX_INFERRED = 100;
 
 /**
  * Save a memory, handling deduplication automatically
@@ -327,6 +327,32 @@ export function clearMemories(userId: number, guildId: string): number {
 }
 
 /**
+ * Delete all inferred memories for a user in a guild
+ * Used after profile generation to clean up incorporated memories
+ */
+export function deleteInferredMemories(userId: number, guildId: string): number {
+  const db = getDb();
+  const result = db.run(`DELETE FROM memories WHERE user_id = ? AND guild_id = ? AND source = 'inferred'`, [
+    userId,
+    guildId,
+  ]);
+  return result.changes;
+}
+
+/**
+ * Delete all memories of a specific type for a user in a guild
+ */
+export function deleteMemoriesByType(userId: number, guildId: string, type: MemoryType): number {
+  const db = getDb();
+  const result = db.run(`DELETE FROM memories WHERE user_id = ? AND guild_id = ? AND type = ?`, [
+    userId,
+    guildId,
+    type,
+  ]);
+  return result.changes;
+}
+
+/**
  * Get memory count for a user in a guild
  */
 export function getMemoryCount(userId: number, guildId: string): { explicit: number; inferred: number } {
@@ -357,6 +383,7 @@ export function formatMemoriesForPrompt(memories: StoredMemory[], userName: stri
     fact: [],
     instruction: [],
     context: [],
+    profile_update: [],
   };
 
   for (const memory of memories) {

@@ -33,6 +33,7 @@ export {
   type PersonalityConfig,
   type PlatformAccess,
   type PluginsConfig,
+  type ProfileConfig,
   type PromptContext,
   type ToolsConfig,
 } from './config';

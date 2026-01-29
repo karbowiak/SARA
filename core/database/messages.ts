@@ -294,3 +294,134 @@ export function getMessageByPlatformId(platform: string, platformMessageId: stri
   `)
     .get(platform, platformMessageId) as StoredMessage | null;
 }
+
+// ============================================================================
+// Profile Message Retrieval
+// ============================================================================
+
+export interface ProfileMessage {
+  id: number;
+  channelId: string;
+  createdAt: number;
+  content: string;
+  // Reply context (null if not a reply - requires reply_to_message_id column)
+  replyToContent: string | null;
+  replyToAuthor: string | null;
+}
+
+export interface GetMessagesForProfileParams {
+  userId: number;
+  guildId: string;
+  afterTimestamp: number; // Unix timestamp - only get messages after this
+  limit: number; // Max messages to return
+}
+
+/**
+ * Get messages for profile generation
+ *
+ * Retrieves a user's messages in a guild for AI profile analysis.
+ * Currently returns messages without reply context since the messages
+ * table doesn't have a reply_to_message_id column.
+ *
+ * @param params - Parameters including userId, guildId, afterTimestamp, and limit
+ * @returns Array of ProfileMessage objects ordered by timestamp DESC
+ */
+export function getMessagesForProfile(params: GetMessagesForProfileParams): ProfileMessage[] {
+  const db = getDb();
+  const { userId, guildId, afterTimestamp, limit } = params;
+
+  // Note: Reply context (replyToContent, replyToAuthor) requires a reply_to_message_id
+  // column in the messages table. When that column is added, update this query to:
+  // LEFT JOIN messages parent ON m.reply_to_message_id = parent.platform_message_id
+  //   AND parent.guild_id = m.guild_id
+  // LEFT JOIN users parent_user ON parent.user_id = parent_user.id
+  const rows = db
+    .prepare(
+      `
+    SELECT 
+      m.id,
+      m.channel_id as channelId,
+      m.created_at as createdAt,
+      m.content
+    FROM messages m
+    WHERE m.user_id = ? 
+      AND m.guild_id = ?
+      AND m.created_at > ?
+    ORDER BY m.created_at DESC
+    LIMIT ?
+  `,
+    )
+    .all(userId, guildId, afterTimestamp, limit) as Array<{
+    id: number;
+    channelId: string;
+    createdAt: number;
+    content: string;
+  }>;
+
+  // Map to ProfileMessage with null reply context
+  return rows.map((row) => ({
+    id: row.id,
+    channelId: row.channelId,
+    createdAt: row.createdAt,
+    content: row.content,
+    replyToContent: null,
+    replyToAuthor: null,
+  }));
+}
+
+/**
+ * Format profile messages for LLM prompt consumption
+ *
+ * Formats messages in a human-readable format:
+ * #channel / 2026-01-28 14:32 / Username: Message content
+ *   ↳ replying to OtherUser: "Parent message content"
+ *
+ * @param messages - Array of ProfileMessage objects
+ * @param userName - The user's display name
+ * @returns Formatted string for LLM prompt
+ */
+export function formatMessagesForProfile(messages: ProfileMessage[], userName: string): string {
+  const MAX_CONTENT_LENGTH = 500;
+  const MAX_REPLY_LENGTH = 200;
+
+  const truncate = (text: string, maxLength: number): string => {
+    if (text.length <= maxLength) return text;
+    return text.slice(0, maxLength - 3) + '...';
+  };
+
+  const formatDate = (timestamp: number): string => {
+    const date = new Date(timestamp);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
+
+  const lines: string[] = [];
+
+  for (const msg of messages) {
+    const dateStr = formatDate(msg.createdAt);
+    const content = truncate(msg.content, MAX_CONTENT_LENGTH);
+    const channelDisplay = msg.channelId; // Use channel ID since we don't have channel names
+
+    // Main message line
+    lines.push(`#${channelDisplay} / ${dateStr} / ${userName}: ${content}`);
+
+    // Reply context if available
+    if (msg.replyToAuthor && msg.replyToContent) {
+      const replyContent = truncate(msg.replyToContent, MAX_REPLY_LENGTH);
+      lines.push(`  ↳ replying to ${msg.replyToAuthor}: "${replyContent}"`);
+    }
+
+    lines.push(''); // Empty line between messages
+  }
+
+  // Remove trailing empty line
+  if (lines.length > 0 && lines[lines.length - 1] === '') {
+    lines.pop();
+  }
+
+  return lines.join('\n');
+}

@@ -2,7 +2,8 @@
  * System Prompt Builder Helper
  *
  * Centralizes the logic for building system prompts with all context:
- * - User memories
+ * - User profiles (high-level overview of the user)
+ * - User memories (specific remembered facts)
  * - Knowledge base entries
  * - Semantic message search
  * - Image retry context
@@ -13,7 +14,10 @@
 import { type BotConfig, buildSystemPrompt, getBotConfig, type Platform, type Tool } from '@core';
 import {
   formatMemoriesForPrompt,
+  formatProfileForPrompt,
   getMemoriesForPrompt,
+  getOptOutStatus,
+  getProfile,
   getRecentMessages,
   getUserByPlatformId,
   type KnowledgeWithScore,
@@ -76,6 +80,7 @@ export interface BuiltPrompt {
   contextParts: string[];
   /** Debug info about what was loaded */
   debug: {
+    profileLoaded: boolean;
     memoriesCount: number;
     knowledgeCount: number;
     semanticResultsCount: number;
@@ -95,6 +100,7 @@ export async function buildFullSystemPrompt(
   const resolvedConfig = config ?? getBotConfig();
   const contextParts: string[] = [];
   const debug = {
+    profileLoaded: false,
     memoriesCount: 0,
     knowledgeCount: 0,
     semanticResultsCount: 0,
@@ -103,30 +109,49 @@ export async function buildFullSystemPrompt(
     topSemanticScore: undefined as number | undefined,
   };
 
-  // 1. Load user memories
-  if (!context.skipMemories && context.guildId && context.userId) {
-    try {
-      const user = getUserByPlatformId(context.platform, context.userId);
-      if (user) {
-        const memories = await getMemoriesForPrompt({
-          userId: user.id,
-          guildId: context.guildId,
-          currentMessage: context.messageContent,
-          limit: 10,
-        });
+  // Resolve user once for both profile and memories
+  const user = context.guildId && context.userId ? getUserByPlatformId(context.platform, context.userId) : null;
 
-        if (memories.length > 0) {
-          const userName = context.userName ?? 'User';
-          contextParts.push(formatMemoriesForPrompt(memories, userName));
-          debug.memoriesCount = memories.length;
+  // 1. Load user profile (before memories for better context ordering)
+  if (context.guildId && user) {
+    try {
+      const optedOut = getOptOutStatus(user.id, context.guildId);
+      if (!optedOut) {
+        const profile = getProfile(user.id, context.guildId);
+        if (profile) {
+          const formattedProfile = formatProfileForPrompt(profile, context.userName ?? 'User');
+          if (formattedProfile) {
+            contextParts.push(formattedProfile);
+            debug.profileLoaded = true;
+          }
         }
+      }
+    } catch (error) {
+      console.error('Failed to load user profile:', error);
+    }
+  }
+
+  // 2. Load user memories
+  if (!context.skipMemories && context.guildId && user) {
+    try {
+      const memories = await getMemoriesForPrompt({
+        userId: user.id,
+        guildId: context.guildId,
+        currentMessage: context.messageContent,
+        limit: 10,
+      });
+
+      if (memories.length > 0) {
+        const userName = context.userName ?? 'User';
+        contextParts.push(formatMemoriesForPrompt(memories, userName));
+        debug.memoriesCount = memories.length;
       }
     } catch (error) {
       console.error('Failed to load user memories:', error);
     }
   }
 
-  // 2. Semantic search for messages AND knowledge (shares embedding)
+  // 3. Semantic search for messages AND knowledge (shares embedding)
   if (isEmbedderReady() && context.messageContent.length >= 10) {
     try {
       const queryEmbedding = await embed(context.messageContent);
@@ -182,7 +207,7 @@ export async function buildFullSystemPrompt(
     }
   }
 
-  // 3. Add channel context if we have name or topic
+  // 4. Add channel context if we have name or topic
   if (context.channelName || context.channelTopic) {
     let channelSection = '# Channel Context';
     if (context.channelName) {
@@ -194,7 +219,7 @@ export async function buildFullSystemPrompt(
     contextParts.push(channelSection);
   }
 
-  // 4. Inject channel history as context (NOT as separate LLM turns)
+  // 5. Inject channel history as context (NOT as separate LLM turns)
   if (context.channelHistory) {
     const historySection = `# Recent Channel Context
 The following messages are recent conversation history for reference. Respond ONLY to the current user message below.
@@ -205,12 +230,12 @@ ${context.channelHistory}`;
     debug.historyCount = (context.channelHistory.match(/^- /gm) || []).length;
   }
 
-  // 5. Add any additional context provided
+  // 6. Add any additional context provided
   if (context.additionalContext) {
     contextParts.push(context.additionalContext);
   }
 
-  // 5b. Encourage tools for extra context instead of guessing
+  // 6b. Encourage tools for extra context instead of guessing
   if (context.tools && context.tools.length > 0) {
     const toolNames = new Set(context.tools.map((t) => t.metadata.name));
     const guidanceLines: string[] = [];
@@ -225,7 +250,7 @@ ${context.channelHistory}`;
     }
   }
 
-  // 6. Build final system prompt
+  // 7. Build final system prompt
   const systemPrompt = buildSystemPrompt(resolvedConfig, {
     platform: context.platform,
     tools: context.tools,

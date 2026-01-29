@@ -18,6 +18,10 @@ export interface ValidationResult {
 const ALLOWED_DOMAINS = [
   'tiktok.com',
   'www.tiktok.com',
+  'vm.tiktok.com',
+  'm.tiktok.com',
+  'vt.tiktok.com',
+  'embed.tiktok.com',
   'instagram.com',
   'www.instagram.com',
   'reddit.com',

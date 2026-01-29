@@ -1,0 +1,16 @@
+{
+  "id": "bot-optimization-06",
+  "seq": "06",
+  "title": "Add depth limit to tool call recursion",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/app/plugins/ai/services/response-handler.ts"],
+  "acceptance_criteria": [
+    "Add depth parameter (default 0) to handleToolCalls method",
+    "Add MAX_TOOL_DEPTH constant = 5",
+    "Return warning message when depth exceeded",
+    "Log warning with context when depth exceeded"
+  ],
+  "deliverables": ["app/plugins/ai/services/response-handler.ts (modify handleToolCalls)"]
+}

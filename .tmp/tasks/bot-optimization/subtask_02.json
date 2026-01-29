@@ -1,0 +1,15 @@
+{
+  "id": "bot-optimization-02",
+  "seq": "02",
+  "title": "Fix memory leak in Discord adapter stats interval",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/bot/discord/adapter.ts"],
+  "acceptance_criteria": [
+    "Stats interval stored in class property (e.g., statsIntervalId)",
+    "Interval cleared in disconnect() method using clearInterval",
+    "No memory leaks on reconnect cycles (test with multiple connect/disconnect)"
+  ],
+  "deliverables": ["bot/discord/adapter.ts (add property, clear in disconnect)"]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "comprehensive-plugin-code-review-21",
+  "seq": "21",
+  "title": "Review app/plugins/ai/tools/ all AI tools",
+  "status": "pending",
+  "depends_on": ["07", "08", "09"],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/tools/*.tool.ts"
+  ],
+  "acceptance_criteria": [
+    "All AI tools reviewed for security",
+    "Tool schema and parameter validation verified",
+    "API key handling checked for external services",
+    "Error handling and retry logic documented",
+    "Any security or convention issues cataloged"
+  ],
+  "deliverables": ["Review report for app/plugins/ai/tools/"]
+}

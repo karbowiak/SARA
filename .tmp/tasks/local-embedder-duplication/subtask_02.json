@@ -1,0 +1,20 @@
+{
+  "id": "local-embedder-duplication-02",
+  "seq": "02",
+  "title": "Initialize local embedder at bot startup",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/commands/discord.command.ts",
+    "/Users/karbowiak/Private/bot/core/local-embedder.ts"
+  ],
+  "acceptance_criteria": [
+    "initLocalEmbedder() called in discord.command.ts after database init",
+    "Called before adapter.connect()",
+    "Success message logged",
+    "Errors caught and logged without crashing bot",
+    "Bot starts successfully with embedder loaded"
+  ],
+  "deliverables": ["app/commands/discord.command.ts"]
+}

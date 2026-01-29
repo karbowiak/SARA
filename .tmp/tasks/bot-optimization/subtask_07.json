@@ -1,0 +1,16 @@
+{
+  "id": "bot-optimization-07",
+  "seq": "07",
+  "title": "Fix race condition in message fetch timeout",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/app/plugins/ai/services/conversation.ts"],
+  "acceptance_criteria": [
+    "Add resolved boolean flag in Promise constructor",
+    "Both callback and timeout check flag before resolving",
+    "Clear timeout when callback executes first",
+    "No double-resolution possible"
+  ],
+  "deliverables": ["app/plugins/ai/services/conversation.ts (fix fetchMessageContent Promise)"]
+}

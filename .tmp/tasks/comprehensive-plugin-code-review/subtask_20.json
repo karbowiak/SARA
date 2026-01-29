@@ -1,0 +1,19 @@
+{
+  "id": "comprehensive-plugin-code-review-20",
+  "seq": "20",
+  "title": "Review app/plugins/slash/knowledge/",
+  "status": "pending",
+  "depends_on": ["07", "08", "09"],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/app/plugins/slash/knowledge/"
+  ],
+  "acceptance_criteria": [
+    "Knowledge base CRUD operations reviewed",
+    "Guild-level access control verified",
+    "Tag handling and search functionality checked",
+    "Any security or convention issues documented"
+  ],
+  "deliverables": ["Review report for app/plugins/slash/knowledge/"]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "hybrid-profile-memory-system-07",
+  "seq": "07",
+  "title": "Create /profile slash command definition",
+  "status": "pending",
+  "depends_on": ["03"],
+  "parallel": true,
+  "context_files": ["app/plugins/slash/memory/command.ts", "core/types/slash-command.ts"],
+  "acceptance_criteria": [
+    "app/plugins/slash/profile/command.ts created",
+    "profileCommand SlashCommandDefinition exported",
+    "guildOnly: true",
+    "5 subcommands: view, generate, correct, optout, optin",
+    "view: no options, shows current profile",
+    "generate: no options, triggers profile generation (rate limited)",
+    "correct: no options, opens modal for editing",
+    "optout: no options, disables profiling",
+    "optin: no options, re-enables profiling"
+  ],
+  "deliverables": ["app/plugins/slash/profile/command.ts"]
+}

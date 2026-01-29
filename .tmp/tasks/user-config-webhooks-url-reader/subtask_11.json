@@ -1,0 +1,18 @@
+{
+  "id": "user-config-webhooks-url-reader-11",
+  "seq": "11",
+  "title": "Integration testing and type checking",
+  "status": "pending",
+  "depends_on": ["06", "07", "08", "10"],
+  "parallel": false,
+  "context_files": ["/Users/karbowiak/Private/bot/package.json", "/Users/karbowiak/Private/bot/tsconfig.json"],
+  "acceptance_criteria": [
+    "bun run type-check passes (or equivalent tsc --noEmit)",
+    "bun test passes (existing tests don't break)",
+    "Bot starts without errors: bun cli.ts discord (verify startup logs)",
+    "/config command appears in registered commands list",
+    "url_reader tool appears in loaded tools list",
+    "No TypeScript errors in any modified or new files"
+  ],
+  "deliverables": ["No new files - verification only"]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "bot-optimization-04",
+  "seq": "04",
+  "title": "Add time-range pre-filtering to memory vector search",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/core/database/memories.ts"],
+  "acceptance_criteria": [
+    "Add timeRangeMs optional parameter (no default for memories)",
+    "Add WHERE created_at > ? clause when timeRangeMs provided",
+    "Document filtering behavior in function JSDoc comment",
+    "Existing tests pass"
+  ],
+  "deliverables": ["core/database/memories.ts (modify searchMemories function)"]
+}

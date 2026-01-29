@@ -1,0 +1,22 @@
+{
+  "id": "user-config-webhooks-url-reader-02",
+  "seq": "02",
+  "title": "Create user-settings repository",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/core/database/memories.ts",
+    "/Users/karbowiak/Private/bot/core/database/profiles.ts",
+    "/Users/karbowiak/Private/bot/core/database/index.ts"
+  ],
+  "acceptance_criteria": [
+    "File core/database/user-settings.ts exists",
+    "Generic functions: getUserSetting<T>(userId, key), setUserSetting<T>(userId, key, value), deleteUserSetting(userId, key), getAllUserSettings(userId)",
+    "Typed functions: getUserApiKey(userId), setUserApiKey(userId, key), getUserDefaultModel(userId), setUserDefaultModel(userId, model), getUserImageModels(userId), setUserImageModels(userId, models[]), getUserWebhooks(userId), setUserWebhooks(userId, webhooks[]), getWebhookByCategory(userId, category)",
+    "WebhookConfig type defined: { id: string, name: string, url: string, categories: string[], isDefault?: boolean }",
+    "All functions exported from core/database/index.ts",
+    "TypeScript compiles without errors"
+  ],
+  "deliverables": ["core/database/user-settings.ts", "core/database/index.ts (modified)"]
+}

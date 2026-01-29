@@ -1,0 +1,24 @@
+{
+  "id": "local-embedder-duplication-03",
+  "seq": "03",
+  "title": "Create RequestTracker service for in-flight request tracking",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/core/local-embedder.ts",
+    "/Users/karbowiak/Private/bot/core/types/plugin.ts"
+  ],
+  "acceptance_criteria": [
+    "Tracks pending requests per channel with embeddings",
+    "addPending() generates summary and embedding",
+    "findSimilar() returns match if similarity > 0.85",
+    "removePending() removes completed requests",
+    "cleanupStale() removes requests older than 2 minutes",
+    "Cleanup runs every 30 seconds via interval",
+    "Summary format: 'generating image: {prompt first 80 chars}'",
+    "Proper TypeScript types for PendingRequest interface"
+  ],
+  "deliverables": ["app/plugins/ai/services/request-tracker.ts"]
+}

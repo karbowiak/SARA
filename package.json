@@ -33,12 +33,14 @@
   },
   "dependencies": {
     "@immich/sdk": "^2.5.2",
+    "@mozilla/readability": "^0.6.0",
     "@slack/bolt": "^4.6.0",
     "@xenova/transformers": "^2.17.2",
     "better-sqlite3": "^12.6.2",
     "discord.js": "^14.25.1",
     "instagram-private-api": "^1.46.1",
     "instagram-url-direct": "^2.0.7",
+    "linkedom": "^0.18.12",
     "sharp": "^0.34.5",
     "zod": "^4.3.6"
   }

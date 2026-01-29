@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-08",
+  "seq": "08",
+  "title": "Review core/tool-loader.ts AI tool discovery",
+  "status": "pending",
+  "depends_on": ["01", "02", "03", "04", "05", "06"],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/tool-loader.ts"],
+  "acceptance_criteria": [
+    "Tool discovery and loading logic reviewed",
+    "Access control filtering for tools verified",
+    "Tool validation and schema handling checked",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/tool-loader.ts"]
+}

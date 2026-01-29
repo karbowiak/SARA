@@ -1,0 +1,18 @@
+{
+  "id": "local-embedder-duplication-07",
+  "seq": "07",
+  "title": "Update system prompt with history usage guidelines",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/app/helpers/prompt-builder.ts"],
+  "acceptance_criteria": [
+    "Clear instruction about channel history usage added",
+    "Emphasizes history is for context only",
+    "Warns not to fulfill requests from history",
+    "States requests may already be in progress",
+    "Integrated naturally into existing prompt structure",
+    "No breaking changes to existing prompt format"
+  ],
+  "deliverables": ["app/helpers/prompt-builder.ts"]
+}

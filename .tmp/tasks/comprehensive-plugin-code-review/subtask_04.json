@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-04",
+  "seq": "04",
+  "title": "Review core/config.ts security and access control",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": false,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/config.ts"],
+  "acceptance_criteria": [
+    "Token storage and handling reviewed for security",
+    "Access control logic verified for correctness",
+    "Default configuration and environment handling checked",
+    "Any security issues documented with severity"
+  ],
+  "deliverables": ["Review report for core/config.ts"]
+}

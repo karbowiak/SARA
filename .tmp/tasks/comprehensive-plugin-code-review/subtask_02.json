@@ -1,0 +1,27 @@
+{
+  "id": "comprehensive-plugin-code-review-02",
+  "seq": "02",
+  "title": "Review core/database/ repositories",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/core/database/messages.ts",
+    "/Users/karbowiak/Private/bot/core/database/memories.ts",
+    "/Users/karbowiak/Private/bot/core/database/knowledge.ts",
+    "/Users/karbowiak/Private/bot/core/database/reminders.ts",
+    "/Users/karbowiak/Private/bot/core/database/profiles.ts",
+    "/Users/karbowiak/Private/bot/core/database/users.ts",
+    "/Users/karbowiak/Private/bot/core/database/user-roles.ts",
+    "/Users/karbowiak/Private/bot/core/database/user-settings.ts",
+    "/Users/karbowiak/Private/bot/core/database/streams.ts"
+  ],
+  "acceptance_criteria": [
+    "All database repositories reviewed for SQL injection risks",
+    "Query optimization and index usage verified",
+    "Error handling and transaction management checked",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/database/ repositories"]
+}

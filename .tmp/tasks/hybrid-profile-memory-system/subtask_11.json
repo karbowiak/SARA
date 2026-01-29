@@ -1,0 +1,17 @@
+{
+  "id": "hybrid-profile-memory-system-11",
+  "seq": "11",
+  "title": "Add profile_update type to memory tool schema",
+  "status": "pending",
+  "depends_on": ["02"],
+  "parallel": true,
+  "context_files": ["app/plugins/ai/tools/memory.tool.ts", "core/database/memories.ts"],
+  "acceptance_criteria": [
+    "memory.tool.ts schema type enum updated to include 'profile_update'",
+    "Tool description updated to explain when to use profile_update type",
+    "profile_update described as: Use when user shares significant facts about themselves that should update their profile (job changes, new interests, important life events)",
+    "argsSchema Zod validation updated to allow 'profile_update'",
+    "saveMemory action handles profile_update type same as other types"
+  ],
+  "deliverables": ["app/plugins/ai/tools/memory.tool.ts (modified)"]
+}

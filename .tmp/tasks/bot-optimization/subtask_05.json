@@ -1,0 +1,16 @@
+{
+  "id": "bot-optimization-05",
+  "seq": "05",
+  "title": "Add time-range pre-filtering to knowledge vector search",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/core/database/knowledge.ts"],
+  "acceptance_criteria": [
+    "Add timeRangeMs optional parameter (no default for knowledge)",
+    "Add WHERE created_at > ? clause when timeRangeMs provided",
+    "Document filtering behavior in function JSDoc comment",
+    "Existing tests pass"
+  ],
+  "deliverables": ["core/database/knowledge.ts (modify searchKnowledge function)"]
+}

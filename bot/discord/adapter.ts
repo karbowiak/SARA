@@ -405,6 +405,90 @@ export class DiscordAdapter {
       }
     });
 
+    // Send message and return the result (for getting attachment URLs, etc.)
+    this.eventBus.on('message:send-with-result', async (request) => {
+      if (request.platform !== 'discord') {
+        request.resolve?.({ success: false, error: 'Platform mismatch' });
+        return;
+      }
+
+      try {
+        const channel = await this.client.channels.fetch(request.channelId);
+        if (!channel?.isTextBased() || !('send' in channel)) {
+          this.logger.warn('Cannot send to non-text channel', { channelId: request.channelId });
+          request.resolve?.({ success: false, error: 'Cannot send to non-text channel' });
+          return;
+        }
+
+        // Build Discord message options
+        const messageOptions: {
+          content?: string;
+          reply?: { messageReference: string };
+          files?: Array<{ attachment: Buffer | string; name: string }>;
+          embeds?: any[];
+          components?: any[];
+        } = {};
+
+        if (request.message.content) {
+          messageOptions.content = request.message.content;
+        }
+
+        if (request.message.replyToId) {
+          messageOptions.reply = { messageReference: request.message.replyToId };
+        }
+
+        // Handle file attachments
+        if (request.message.attachments && request.message.attachments.length > 0) {
+          messageOptions.files = request.message.attachments.map(
+            (att: { data: Buffer | string; filename: string }) => ({
+              attachment: att.data,
+              name: att.filename,
+            }),
+          );
+        }
+
+        // Handle embeds
+        if (request.message.embeds && request.message.embeds.length > 0) {
+          messageOptions.embeds = request.message.embeds.map((e: Parameters<typeof this.transformEmbed>[0]) =>
+            this.transformEmbed(e),
+          );
+        }
+
+        // Handle components (buttons, selects)
+        if (request.message.components && request.message.components.length > 0) {
+          messageOptions.components = this.transformComponents(request.message.components);
+        }
+
+        const sentMessage = await channel.send(messageOptions);
+
+        // Log outgoing message to terminal
+        this.logOutgoingMessage(channel, request.message.content, request.message.attachments?.length);
+
+        // Extract attachment URLs from sent message
+        const attachmentUrls = sentMessage.attachments.map((att) => ({
+          url: att.url,
+          name: att.name,
+          contentType: att.contentType,
+          size: att.size,
+        }));
+
+        request.resolve?.({
+          success: true,
+          messageId: sentMessage.id,
+          attachments: attachmentUrls,
+        });
+      } catch (error) {
+        this.logger.error('Failed to send message', {
+          channelId: request.channelId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        request.resolve?.({
+          success: false,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+    });
+
     // Suppress embeds on a message
     this.eventBus.on('message:suppress-embeds', async (request) => {
       if (request.platform !== 'discord') return;
@@ -1404,27 +1488,38 @@ export class DiscordAdapter {
       result.options = cmd.options.map((opt) => this.transformOption(opt));
     }
 
-    if (cmd.subcommands && cmd.subcommands.length > 0) {
-      result.options = cmd.subcommands.map((sub) => ({
-        type: 1, // SUB_COMMAND
-        name: sub.name,
-        description: sub.description,
-        options: sub.options?.map((opt) => this.transformOption(opt)),
-      }));
-    }
+    // Build combined options from subcommands and subcommand groups
+    const subcommandOptions: Record<string, unknown>[] = [];
 
-    if (cmd.subcommandGroups && cmd.subcommandGroups.length > 0) {
-      result.options = cmd.subcommandGroups.map((group) => ({
-        type: 2, // SUB_COMMAND_GROUP
-        name: group.name,
-        description: group.description,
-        options: group.subcommands.map((sub) => ({
-          type: 1,
+    if (cmd.subcommands && cmd.subcommands.length > 0) {
+      subcommandOptions.push(
+        ...cmd.subcommands.map((sub) => ({
+          type: 1, // SUB_COMMAND
           name: sub.name,
           description: sub.description,
           options: sub.options?.map((opt) => this.transformOption(opt)),
         })),
-      }));
+      );
+    }
+
+    if (cmd.subcommandGroups && cmd.subcommandGroups.length > 0) {
+      subcommandOptions.push(
+        ...cmd.subcommandGroups.map((group) => ({
+          type: 2, // SUB_COMMAND_GROUP
+          name: group.name,
+          description: group.description,
+          options: group.subcommands.map((sub) => ({
+            type: 1,
+            name: sub.name,
+            description: sub.description,
+            options: sub.options?.map((opt) => this.transformOption(opt)),
+          })),
+        })),
+      );
+    }
+
+    if (subcommandOptions.length > 0) {
+      result.options = subcommandOptions;
     }
 
     if (cmd.dmOnly) {

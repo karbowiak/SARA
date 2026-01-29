@@ -1,0 +1,19 @@
+{
+  "id": "bot-optimization-09",
+  "seq": "09",
+  "title": "Clean up orphaned code in AIPlugin",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/ai.plugin.ts",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/services/response-handler.ts"
+  ],
+  "acceptance_criteria": [
+    "Remove incomplete method starting at line 301",
+    "Remove duplicate methods that exist in response-handler.ts",
+    "Verify no references to removed methods in codebase",
+    "Code compiles without errors"
+  ],
+  "deliverables": ["app/plugins/ai/ai.plugin.ts (remove lines 301-399)"]
+}

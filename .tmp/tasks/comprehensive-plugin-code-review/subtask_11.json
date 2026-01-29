@@ -1,0 +1,19 @@
+{
+  "id": "comprehensive-plugin-code-review-11",
+  "seq": "11",
+  "title": "Review app/plugins/message/logger.plugin.ts",
+  "status": "pending",
+  "depends_on": ["07", "08", "09"],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/app/plugins/message/logger.plugin.ts"
+  ],
+  "acceptance_criteria": [
+    "Message logging and embedding generation reviewed",
+    "Access control and role handling verified",
+    "Performance impact of logging on all messages checked",
+    "Any security or convention issues documented"
+  ],
+  "deliverables": ["Review report for app/plugins/message/logger.plugin.ts"]
+}

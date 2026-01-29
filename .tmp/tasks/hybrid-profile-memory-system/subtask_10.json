@@ -1,0 +1,18 @@
+{
+  "id": "hybrid-profile-memory-system-10",
+  "seq": "10",
+  "title": "Integrate profile into system prompt via prompt-builder",
+  "status": "pending",
+  "depends_on": ["03"],
+  "parallel": true,
+  "context_files": ["app/helpers/prompt-builder.ts", "core/database/profiles.ts", "core/database/users.ts"],
+  "acceptance_criteria": [
+    "buildFullSystemPrompt() modified to fetch user profile if userId and guildId present",
+    "Skips profile injection if user opted out (opted_out = 1)",
+    "Skips profile injection if no profile exists",
+    "Uses formatProfileForPrompt() to format profile section",
+    "Profile section injected BEFORE memories section in contextParts",
+    "Debug info updated to include profileLoaded: boolean"
+  ],
+  "deliverables": ["app/helpers/prompt-builder.ts (modified)"]
+}

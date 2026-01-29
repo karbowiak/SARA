@@ -112,6 +112,28 @@ export {
   upsertUserRoles,
 } from './user-roles';
 export {
+  addUserWebhook,
+  clearAllUserSettings,
+  deleteUserApiKey,
+  deleteUserSetting,
+  getAllUserSettings,
+  getDefaultWebhook,
+  getUserApiKey,
+  getUserDefaultModel,
+  getUserImageModels,
+  getUserSetting,
+  getUserWebhooks,
+  getWebhookByCategory,
+  removeUserWebhook,
+  setUserApiKey,
+  setUserDefaultModel,
+  setUserImageModels,
+  setUserSetting,
+  setUserWebhooks,
+  type UserSettingKey,
+  type WebhookConfig,
+} from './user-settings';
+export {
   getLastSeen,
   getRecentUsers,
   getUserById,

@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-07",
+  "seq": "07",
+  "title": "Review core/plugin-loader.ts plugin discovery",
+  "status": "pending",
+  "depends_on": ["01", "02", "03", "04", "05", "06"],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/plugin-loader.ts"],
+  "acceptance_criteria": [
+    "Plugin discovery and loading logic reviewed",
+    "Error handling for failed plugin loads verified",
+    "Plugin lifecycle management (load/unload) checked",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/plugin-loader.ts"]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "bot-optimization-12",
+  "seq": "12",
+  "title": "Update conversation.ts to use direct message lookup",
+  "status": "pending",
+  "depends_on": ["11"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/services/conversation.ts",
+    "/Users/karbowiak/Private/bot/core/database/messages.ts"
+  ],
+  "acceptance_criteria": [
+    "Replace getRecentMessages call with getMessageByPlatformId where appropriate",
+    "Lines 168-231 updated to use new function",
+    "Performance improves (no fetching 50 messages to find 1)",
+    "Existing functionality unchanged"
+  ],
+  "deliverables": ["app/plugins/ai/services/conversation.ts (update to use getMessageByPlatformId)"]
+}

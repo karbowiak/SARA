@@ -123,6 +123,28 @@ export interface MessageSendRequest {
 }
 
 /**
+ * Result of sending a message
+ */
+export interface MessageSendResult {
+  success: boolean;
+  messageId?: string;
+  attachments?: Array<{
+    url: string;
+    name: string | null;
+    contentType: string | null;
+    size: number;
+  }>;
+  error?: string;
+}
+
+/**
+ * Message send request with result callback (for getting attachment URLs)
+ */
+export interface MessageSendWithResultRequest extends MessageSendRequest {
+  resolve?: (result: MessageSendResult) => void;
+}
+
+/**
  * DM send request (send to a user directly)
  */
 export interface DMSendRequest {

@@ -1,0 +1,23 @@
+{
+  "id": "local-embedder-duplication-05",
+  "seq": "05",
+  "title": "Add duplicate detection to response handler",
+  "status": "pending",
+  "depends_on": ["04"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/services/response-handler.ts",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/services/request-tracker.ts"
+  ],
+  "acceptance_criteria": [
+    "Check for similar requests before executing image_generation tool",
+    "Skip execution if similarity > 0.85",
+    "Return 'already in progress' message in tool result",
+    "Track pending request during tool execution",
+    "Remove from pending after completion or error",
+    "Only affects image_generation tool",
+    "Proper logging for duplicates and tracking",
+    "Works correctly with parallel tool execution"
+  ],
+  "deliverables": ["app/plugins/ai/services/response-handler.ts"]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "comprehensive-plugin-code-review-17",
+  "seq": "17",
+  "title": "Review app/plugins/slash/imagine/",
+  "status": "pending",
+  "depends_on": ["07", "08", "09"],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/app/plugins/slash/imagine/"
+  ],
+  "acceptance_criteria": [
+    "Image generation command handling reviewed",
+    "Aspect ratio and resolution validation verified",
+    "Button interaction handling checked",
+    "Any security or convention issues documented"
+  ],
+  "deliverables": ["Review report for app/plugins/slash/imagine/"]
+}

@@ -1,0 +1,27 @@
+{
+  "id": "user-config-webhooks-url-reader",
+  "name": "Per-User Configuration, Image Webhooks, and URL Reader Tool",
+  "status": "active",
+  "objective": "Add user settings storage, /config slash command with webhooks, modify image tool for webhook routing, and create URL reader tool",
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/core/database/index.ts",
+    "/Users/karbowiak/Private/bot/core/llm-client.ts",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/ai.plugin.ts",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/tools/image-generation.tool.ts",
+    "/Users/karbowiak/Private/bot/migrations/011_create_user_profiles.ts"
+  ],
+  "exit_criteria": [
+    "Migration 013_user_settings.ts exists and runs cleanly",
+    "user-settings.ts repository with typed getters/setters exported from @core/database",
+    "/config command handles view, api-key, chat-model, image-models, reset, webhook subcommands",
+    "webhook.ts helper sends content/embeds/files to Discord webhooks with test function",
+    "image-generation.tool.ts sends to webhook when webhookSend=true",
+    "ai.plugin.ts uses user's API key if configured",
+    "url-reader.tool.ts extracts content from URLs safely",
+    "All TypeScript compiles without errors"
+  ],
+  "subtask_count": 11,
+  "completed_count": 0,
+  "created_at": "2026-01-29T21:30:00.000Z"
+}

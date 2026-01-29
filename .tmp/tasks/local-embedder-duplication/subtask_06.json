@@ -1,0 +1,22 @@
+{
+  "id": "local-embedder-duplication-06",
+  "seq": "06",
+  "title": "Add pending requests context to conversation service",
+  "status": "pending",
+  "depends_on": ["03", "04"],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/services/conversation.ts",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/services/request-tracker.ts"
+  ],
+  "acceptance_criteria": [
+    "buildPendingRequestsContext() method created",
+    "Retrieves pending requests for channel from RequestTracker",
+    "Returns null if no pending requests",
+    "Format: '## Currently Processing' with list of requests",
+    "Shows time elapsed for each request",
+    "Injected into system prompt before current message",
+    "Clear instruction not to duplicate requests"
+  ],
+  "deliverables": ["app/plugins/ai/services/conversation.ts"]
+}

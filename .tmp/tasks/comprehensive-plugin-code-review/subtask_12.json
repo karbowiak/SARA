@@ -1,0 +1,19 @@
+{
+  "id": "comprehensive-plugin-code-review-12",
+  "seq": "12",
+  "title": "Review app/plugins/message/immich-auto.plugin.ts",
+  "status": "pending",
+  "depends_on": ["07", "08", "09"],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/app/plugins/message/immich-auto.plugin.ts"
+  ],
+  "acceptance_criteria": [
+    "Immich API integration reviewed for security",
+    "File download and upload handling verified",
+    "Error handling and cleanup of temp files checked",
+    "Any issues documented with severity"
+  ],
+  "deliverables": ["Review report for app/plugins/message/immich-auto.plugin.ts"]
+}

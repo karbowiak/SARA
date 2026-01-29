@@ -1,6 +1,12 @@
 import type { BotConfig, BotMessage, ChatMessage, ContentPart, PluginContext, Tool } from '@core';
 import { getBotConfig } from '@core';
-import { getMessageByPlatformId, getRecentMessages, type StoredMessage } from '@core/database';
+import {
+  getMessageByPlatformId,
+  getRecentMessages,
+  getUserByPlatformId,
+  getUserWebhooks,
+  type StoredMessage,
+} from '@core/database';
 import { buildFullSystemPrompt } from '../../../helpers/prompt-builder';
 import type { ImageProcessor } from './image-processor';
 import type { RequestTracker } from './request-tracker';
@@ -47,6 +53,10 @@ export class ConversationService {
     // Add pending requests context
     const pendingContext = this.buildPendingRequestsContext(message);
     if (pendingContext) contextSections.push(pendingContext);
+
+    // Add webhook context if user has webhooks configured AND has their own API key
+    const webhookContext = this.buildWebhookContext(message);
+    if (webhookContext) contextSections.push(webhookContext);
 
     // Combine sections
     const additionalContext = contextSections.length > 0 ? contextSections.join('\n\n---\n\n') : undefined;
@@ -134,7 +144,7 @@ export class ConversationService {
   /**
    * Format history messages into text lines
    */
-  private formatHistoryMessages(history: StoredMessage[], botName: string, currentMessage: BotMessage): string | null {
+  private formatHistoryMessages(history: StoredMessage[], botName: string, _currentMessage: BotMessage): string | null {
     // Filter messages older than 2 hours
     const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
     const cutoffTime = Date.now() - TWO_HOURS_MS;
@@ -320,5 +330,56 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
         },
       });
     });
+  }
+
+  /**
+   * Build context about user's configured webhooks for image routing
+   */
+  private buildWebhookContext(message: BotMessage): string | null {
+    try {
+      // Get user's internal ID
+      const dbUser = getUserByPlatformId(message.platform, message.author.id);
+      if (!dbUser) return null;
+
+      // Get user's webhooks (works independently of API key)
+      const webhooks = getUserWebhooks(dbUser.id);
+      if (webhooks.length === 0) return null;
+
+      // Build webhook category list
+      const allCategories = new Set<string>();
+      const webhookDescriptions: string[] = [];
+
+      for (const webhook of webhooks) {
+        if (webhook.categories.length > 0) {
+          for (const c of webhook.categories) {
+            allCategories.add(c);
+          }
+          webhookDescriptions.push(
+            `- "${webhook.name}": categories [${webhook.categories.join(', ')}]${webhook.isDefault ? ' (default)' : ''}`,
+          );
+        } else if (webhook.isDefault) {
+          webhookDescriptions.push(`- "${webhook.name}": default webhook (no specific categories)`);
+        }
+      }
+
+      if (allCategories.size === 0 && webhookDescriptions.length === 0) return null;
+
+      const lines = [
+        '## Image Webhooks',
+        'This user has configured webhooks for image routing. When generating images that match these categories, use the webhook parameters:',
+        '',
+        '**Configured webhooks:**',
+        ...webhookDescriptions,
+        '',
+        `**Available categories:** ${[...allCategories].join(', ') || '(none - use default webhook)'}`,
+        '',
+        '**Usage:** When generating an image that fits a category (e.g., nsfw content), set `webhookSend: true` and `webhookCategory: "<category>"` in the image_generation tool call.',
+        'If no category matches but a default webhook exists, set `webhookSend: true` without a category.',
+      ];
+
+      return lines.join('\n');
+    } catch {
+      return null;
+    }
   }
 }

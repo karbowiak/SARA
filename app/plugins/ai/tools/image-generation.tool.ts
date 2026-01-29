@@ -7,8 +7,17 @@
 
 import { generateImage } from '@app/helpers/image';
 import type { AspectRatio, ImageResolution } from '@app/helpers/image/types';
+import { sendToWebhook } from '@app/helpers/webhook';
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getBotConfig } from '@core';
+import {
+  getDefaultWebhook,
+  getUserApiKey,
+  getUserByPlatformId,
+  getUserWebhooks,
+  getWebhookByCategory,
+  type WebhookConfig,
+} from '@core/database';
 import { z } from 'zod';
 
 interface ImageGenerationArgs {
@@ -18,6 +27,8 @@ interface ImageGenerationArgs {
   model?: string;
   aspect_ratio?: string;
   resolution?: string;
+  webhookSend?: boolean;
+  webhookCategory?: string;
 }
 
 /**
@@ -174,6 +185,16 @@ ${modelDescriptions}`,
               'Resolution quality of the generated image (e.g., "1K", "2K", "4K"). Use "1K" if user doesn\'t specify',
             enum: ['1K', '2K', '4K'],
           },
+          webhookSend: {
+            type: 'boolean',
+            description:
+              'If true, also send the image to a configured webhook. The image is always sent to the channel first.',
+          },
+          webhookCategory: {
+            type: 'string',
+            description:
+              'Category to match against user webhook config (e.g., "nsfw", "art", "car"). If not specified, uses the user\'s default webhook.',
+          },
         },
         required: ['prompt'],
         additionalProperties: false,
@@ -228,6 +249,8 @@ ${modelDescriptions}`,
     model: z.string().optional(),
     aspect_ratio: z.enum(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']).optional(),
     resolution: z.enum(['1K', '2K', '4K']).optional(),
+    webhookSend: z.boolean().optional(),
+    webhookCategory: z.string().max(100).optional(),
   });
 
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
@@ -244,8 +267,14 @@ ${modelDescriptions}`,
     }
 
     const config = getBotConfig();
-    const apiKey = config?.tokens?.openrouter;
+    const botApiKey = config?.tokens?.openrouter;
     const imageModels = config?.ai?.imageModels ?? [];
+
+    // Check for user's API key
+    const dbUser = getUserByPlatformId('discord', context.user.id);
+    const userId = dbUser?.id;
+    const userApiKey = userId ? getUserApiKey(userId) : null;
+    const apiKey = userApiKey || botApiKey;
 
     if (!apiKey) {
       return {
@@ -304,6 +333,7 @@ ${modelDescriptions}`,
         style: params.style,
         hasReferenceImage: !!params.reference_image_url,
         model: requestedModel,
+        usingUserKey: !!userApiKey,
       });
 
       let result = await generateImage({
@@ -313,6 +343,7 @@ ${modelDescriptions}`,
         model: requestedModel,
         aspectRatio: params.aspect_ratio as AspectRatio,
         resolution: params.resolution as ImageResolution,
+        apiKey,
       });
 
       // Automatic fallback: if primary model refused and user didn't explicitly request it
@@ -334,6 +365,7 @@ ${modelDescriptions}`,
             model: fallbackModel.model,
             aspectRatio: params.aspect_ratio as AspectRatio,
             resolution: params.resolution as ImageResolution,
+            apiKey,
           });
 
           if (result.success) {
@@ -372,20 +404,49 @@ ${modelDescriptions}`,
     fallbackUsed: boolean,
     modelUsed: string,
   ): Promise<ToolResult> {
-    // Send image via event bus
-    context.eventBus.emit('message:send', {
-      channelId: context.channel.id,
-      platform: context.message.platform,
-      message: {
-        attachments: [
-          {
-            data: result.imageBuffer,
-            filename: 'generated-image.png',
-          },
-        ],
-        replyToId: context.message.id,
-      },
+    const { webhookSend, webhookCategory } = params;
+
+    // Send image to channel and get the attachment URL back
+    const sendResult = await new Promise<{
+      success: boolean;
+      messageId?: string;
+      attachments?: Array<{ url: string; name: string | null }>;
+      error?: string;
+    }>((resolve) => {
+      context.eventBus.emit('message:send-with-result', {
+        channelId: context.channel.id,
+        platform: context.message.platform,
+        message: {
+          attachments: [
+            {
+              data: result.imageBuffer,
+              filename: 'generated-image.png',
+            },
+          ],
+          replyToId: context.message.id,
+        },
+        resolve,
+      });
+
+      // Timeout after 30 seconds
+      setTimeout(() => resolve({ success: false, error: 'Timeout waiting for message send' }), 30000);
     });
+
+    if (!sendResult.success) {
+      context.logger.error('[ImageGenerationTool] Failed to send image to channel', {
+        error: sendResult.error,
+      });
+      return {
+        success: false,
+        error: {
+          type: 'send_failed',
+          message: `Failed to send image to channel: ${sendResult.error}`,
+          retryable: true,
+        },
+      };
+    }
+
+    const imageUrl = sendResult.attachments?.[0]?.url;
 
     context.logger.info('[ImageGenerationTool] Image sent to channel', {
       bufferSize: result.imageBuffer.length,
@@ -393,9 +454,68 @@ ${modelDescriptions}`,
       aspectRatio: result.aspectRatio,
       resolution: result.resolution,
       fallbackUsed,
+      imageUrl,
     });
 
+    // ALSO send to webhook if requested
+    let webhookSent = false;
+    let webhookName: string | undefined;
+
+    if (webhookSend && imageUrl) {
+      // Get user's internal ID for webhook lookup
+      const dbUser = getUserByPlatformId('discord', context.user.id);
+      const userId = dbUser?.id;
+
+      if (userId) {
+        const _webhooks = getUserWebhooks(userId);
+        let targetWebhook: WebhookConfig | null = null;
+
+        if (webhookCategory) {
+          targetWebhook = getWebhookByCategory(userId, webhookCategory);
+        }
+        if (!targetWebhook) {
+          targetWebhook = getDefaultWebhook(userId);
+        }
+
+        if (targetWebhook) {
+          context.logger.info('[ImageGenerationTool] Sending image URL to webhook', {
+            webhookName: targetWebhook.name,
+            category: webhookCategory,
+            imageUrl,
+          });
+
+          const webhookResult = await sendToWebhook(targetWebhook.url, {
+            metadata: {
+              url: imageUrl,
+              label: webhookCategory || 'default',
+              prompt: params.prompt,
+              timestamp: new Date().toISOString(),
+            },
+          });
+
+          if (webhookResult.success) {
+            webhookSent = true;
+            webhookName = targetWebhook.name;
+            context.logger.info('[ImageGenerationTool] Image URL sent to webhook successfully', {
+              webhookName: targetWebhook.name,
+            });
+          } else {
+            context.logger.warn('[ImageGenerationTool] Webhook send failed', {
+              webhookName: targetWebhook.name,
+              error: webhookResult.error,
+            });
+          }
+        } else {
+          context.logger.warn('[ImageGenerationTool] Webhook send requested but no matching webhook configured', {
+            userId,
+            webhookCategory,
+          });
+        }
+      }
+    }
+
     const fallbackInfo = fallbackUsed ? ' (model refused, fell back to alternative due to content moderation)' : '';
+    const webhookInfo = webhookSent ? ` Also sent to webhook "${webhookName}".` : '';
 
     return {
       success: true,
@@ -405,9 +525,11 @@ ${modelDescriptions}`,
         aspectRatio: result.aspectRatio,
         resolution: result.resolution,
         sent_to_channel: true,
+        sent_to_webhook: webhookSent,
+        webhookName: webhookName,
         fallback_used: fallbackUsed,
       },
-      message: `✅ I've generated and sent the image using **${modelUsed}**${fallbackInfo} based on your prompt: "${params.prompt}"`,
+      message: `✅ I've generated and sent the image using **${modelUsed}**${fallbackInfo} based on your prompt: "${params.prompt}"${webhookInfo}`,
     };
   }
 

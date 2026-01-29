@@ -1,0 +1,22 @@
+{
+  "id": "user-config-webhooks-url-reader-08",
+  "seq": "08",
+  "title": "Modify AI plugin for per-user API key support",
+  "status": "pending",
+  "depends_on": ["02"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/ai.plugin.ts",
+    "/Users/karbowiak/Private/bot/core/llm-client.ts",
+    "/Users/karbowiak/Private/bot/core/database/user-settings.ts"
+  ],
+  "acceptance_criteria": [
+    "In handle(): before LLM call, check getUserApiKey(userId)",
+    "If user has API key: create temporary LLMClient with user's key for that request only",
+    "If user has default_model set: use it instead of config default",
+    "Original shared LLM client remains unchanged for users without custom keys",
+    "Logging indicates when using user's custom key (without logging the key itself)",
+    "TypeScript compiles without errors"
+  ],
+  "deliverables": ["app/plugins/ai/ai.plugin.ts (modified)"]
+}

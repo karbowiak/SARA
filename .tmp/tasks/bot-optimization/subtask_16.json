@@ -1,0 +1,15 @@
+{
+  "id": "bot-optimization-16",
+  "seq": "16",
+  "title": "Add Zod dependency to package.json",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": false,
+  "context_files": ["/Users/karbowiak/Private/bot/package.json"],
+  "acceptance_criteria": [
+    "Run bun add zod successfully",
+    "Zod appears in package.json dependencies",
+    "Can import { z } from 'zod' in code"
+  ],
+  "deliverables": ["package.json (add zod dependency)", "bun.lockb (updated)"]
+}

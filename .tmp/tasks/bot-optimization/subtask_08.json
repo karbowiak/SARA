@@ -1,0 +1,19 @@
+{
+  "id": "bot-optimization-08",
+  "seq": "08",
+  "title": "Reuse LLMClient in reminder plugin",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/timers/reminder.plugin.ts",
+    "/Users/karbowiak/Private/bot/core/llm-client.ts"
+  ],
+  "acceptance_criteria": [
+    "Add private llm?: LLMClient property to class",
+    "Initialize LLMClient once in load() method",
+    "Reuse instance in generateAIComment() method",
+    "No new LLMClient instantiation on every reminder"
+  ],
+  "deliverables": ["app/plugins/timers/reminder.plugin.ts (add property, initialize in load)"]
+}

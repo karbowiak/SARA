@@ -1,0 +1,20 @@
+{
+  "id": "comprehensive-plugin-code-review-06",
+  "seq": "06",
+  "title": "Review core/embedder.ts and local-embedder.ts",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/core/embedder.ts",
+    "/Users/karbowiak/Private/bot/core/local-embedder.ts"
+  ],
+  "acceptance_criteria": [
+    "Embedding initialization and model loading reviewed",
+    "Resource usage and memory management verified",
+    "Error handling and fallback logic checked",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/embedder.ts and local-embedder.ts"]
+}

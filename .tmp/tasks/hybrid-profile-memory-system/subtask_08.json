@@ -1,0 +1,28 @@
+{
+  "id": "hybrid-profile-memory-system-08",
+  "seq": "08",
+  "title": "Implement /profile slash command handler plugin",
+  "status": "pending",
+  "depends_on": ["06", "07"],
+  "parallel": false,
+  "context_files": [
+    "app/plugins/slash/memory/plugin.ts",
+    "app/plugins/slash/profile/command.ts",
+    "app/services/profile-generator.ts",
+    "core/database/profiles.ts",
+    "core/types/slash-command.ts"
+  ],
+  "acceptance_criteria": [
+    "app/plugins/slash/profile/plugin.ts created with ProfileSlashPlugin class",
+    "Plugin id is 'profile' (not 'profile-command')",
+    "Registers profileCommand on load, unregisters on unload",
+    "Handles command:received for 'profile' command",
+    "view subcommand: fetches profile, shows embed with sections or 'no profile' message, ephemeral",
+    "generate subcommand: checks 24h rate limit via last_generated_at, calls generateProfile(), shows result embed, ephemeral",
+    "correct subcommand: opens modal with 4 TextInput fields (summary, personality, interests, facts), pre-fills from existing profile",
+    "Handles interaction:modal for 'profile_correct_modal', updates profile via upsertProfile()",
+    "optout subcommand: calls setOptOut(true), shows confirmation, ephemeral",
+    "optin subcommand: calls setOptOut(false), shows confirmation, ephemeral"
+  ],
+  "deliverables": ["app/plugins/slash/profile/plugin.ts"]
+}

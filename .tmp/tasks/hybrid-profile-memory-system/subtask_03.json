@@ -1,0 +1,23 @@
+{
+  "id": "hybrid-profile-memory-system-03",
+  "seq": "03",
+  "title": "Create profile repository with CRUD operations",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": false,
+  "context_files": [
+    "core/database/memories.ts",
+    "core/database/users.ts",
+    "core/database/client.ts",
+    "core/database/index.ts"
+  ],
+  "acceptance_criteria": [
+    "core/database/profiles.ts created with StoredProfile and UpsertProfileParams interfaces",
+    "getProfile(userId, guildId) returns profile or null",
+    "upsertProfile(params) creates or updates profile, returns { id, updated }",
+    "setOptOut(userId, guildId, optedOut) updates opted_out field",
+    "formatProfileForPrompt(profile, userName) returns formatted string for system prompt",
+    "All functions exported from core/database/index.ts"
+  ],
+  "deliverables": ["core/database/profiles.ts"]
+}

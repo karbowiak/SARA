@@ -103,6 +103,8 @@ export interface ImageGenerationRequest {
   style?: string;
   /** Model to use for generation (optional, uses config default) */
   model?: string;
+  /** Optional API key override (uses user's key instead of bot's) */
+  apiKey?: string;
 }
 
 /**

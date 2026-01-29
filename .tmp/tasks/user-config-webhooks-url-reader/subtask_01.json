@@ -1,0 +1,22 @@
+{
+  "id": "user-config-webhooks-url-reader-01",
+  "seq": "01",
+  "title": "Create user_settings database migration",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/migrations/011_create_user_profiles.ts",
+    "/Users/karbowiak/Private/bot/migrations/012_add_profile_update_memory_type.ts",
+    "/Users/karbowiak/Private/bot/core/database/migrator.ts"
+  ],
+  "acceptance_criteria": [
+    "Migration file migrations/013_user_settings.ts exists",
+    "Table user_settings has columns: id, user_id (FK to users), setting_key, setting_value (TEXT for JSON), created_at, updated_at",
+    "UNIQUE constraint on (user_id, setting_key)",
+    "INDEX on user_id for fast lookups",
+    "up() and down() functions implemented",
+    "Migration runs successfully with bun cli.ts db:migrate"
+  ],
+  "deliverables": ["migrations/013_user_settings.ts"]
+}

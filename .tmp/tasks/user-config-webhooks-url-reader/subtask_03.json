@@ -1,0 +1,23 @@
+{
+  "id": "user-config-webhooks-url-reader-03",
+  "seq": "03",
+  "title": "Create OpenRouter helper for model fetching",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/core/helpers/fetcher.ts",
+    "/Users/karbowiak/Private/bot/core/llm-client.ts",
+    "/Users/karbowiak/Private/bot/core/config.ts"
+  ],
+  "acceptance_criteria": [
+    "File app/helpers/openrouter.ts exists",
+    "getOpenRouterModels(apiKey?) fetches models from OpenRouter API and caches for 1 hour",
+    "validateModel(modelId, apiKey?) returns boolean checking if model exists",
+    "getImageModels(apiKey?) filters models to those with image capability",
+    "Uses bot's API key from config as fallback if no apiKey provided",
+    "Handles API errors gracefully with proper error messages",
+    "TypeScript compiles without errors"
+  ],
+  "deliverables": ["app/helpers/openrouter.ts"]
+}

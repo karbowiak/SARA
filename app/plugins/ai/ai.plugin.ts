@@ -19,6 +19,7 @@ import {
   type PluginContext,
   type Tool,
 } from '@core';
+import { getUserApiKey, getUserByPlatformId, getUserDefaultModel } from '@core/database';
 import path from 'path';
 import { ConversationService } from './services/conversation';
 import { ImageProcessor } from './services/image-processor';
@@ -35,9 +36,9 @@ export class AIPlugin implements MessageHandlerPlugin {
 
   private context?: PluginContext;
   private loadedTools: LoadedTools = { all: [], accessConfig: new Map() };
-  private llm?: LLMClient;
+  private defaultLlm?: LLMClient;
   private config?: BotConfig;
-  private model: string = FALLBACK_MODEL;
+  private defaultModel: string = FALLBACK_MODEL;
 
   // Services
   private conversationService!: ConversationService;
@@ -50,7 +51,7 @@ export class AIPlugin implements MessageHandlerPlugin {
 
     // Load bot configuration
     this.config = getBotConfig();
-    this.model = this.config.ai?.defaultModel ?? FALLBACK_MODEL;
+    this.defaultModel = this.config.ai?.defaultModel ?? FALLBACK_MODEL;
 
     // Initialize services
     this.imageProcessor = new ImageProcessor();
@@ -67,9 +68,9 @@ export class AIPlugin implements MessageHandlerPlugin {
       return;
     }
 
-    this.llm = createOpenRouterClient(apiKey, {
+    this.defaultLlm = createOpenRouterClient(apiKey, {
       baseUrl: this.config.ai?.openRouterBaseUrl,
-      defaultModel: this.model,
+      defaultModel: this.defaultModel,
       defaultTemperature: this.config.ai?.temperature,
       defaultMaxTokens: this.config.ai?.maxTokens,
       timeout: 180000,
@@ -79,7 +80,7 @@ export class AIPlugin implements MessageHandlerPlugin {
       },
     });
 
-    this.responseHandler = new ResponseHandler(this.config, this.llm, this.requestTracker);
+    this.responseHandler = new ResponseHandler(this.config, this.defaultLlm, this.requestTracker);
 
     // Load tools from the tools directory (filtered by config)
     const toolsDir = path.join(import.meta.dir, 'tools');
@@ -90,7 +91,7 @@ export class AIPlugin implements MessageHandlerPlugin {
     });
 
     context.logger.info('AIPlugin loaded', {
-      model: this.model,
+      model: this.defaultModel,
       botName: this.config.bot.name,
       tools: this.loadedTools.all.map((t) => t.metadata.name),
     });
@@ -100,7 +101,7 @@ export class AIPlugin implements MessageHandlerPlugin {
     this.context?.logger.info('AIPlugin unloaded');
     this.context = undefined;
     this.loadedTools = { all: [], accessConfig: new Map() };
-    this.llm = undefined;
+    this.defaultLlm = undefined;
     this.config = undefined;
 
     if (this.requestTracker) {
@@ -124,9 +125,59 @@ export class AIPlugin implements MessageHandlerPlugin {
     const startTime = Date.now();
     const toolsUsed: string[] = [];
 
-    if (!this.llm) {
+    if (!this.defaultLlm) {
       context.logger.error('LLM client not initialized');
       return;
+    }
+
+    // Determine LLM client and model to use (per-user API keys/models)
+    let llmClient = this.defaultLlm;
+    let modelToUse = this.defaultModel;
+    let responseHandler = this.responseHandler;
+    let usingUserKey = false;
+
+    try {
+      // Get the user's internal database ID
+      const dbUser = await getUserByPlatformId(message.platform, message.author.id);
+      const userId = dbUser?.id;
+
+      if (userId) {
+        // Check for user's custom API key FIRST
+        // User settings (model, etc.) only apply if they have their own API key
+        const userApiKey = getUserApiKey(userId);
+        if (userApiKey) {
+          usingUserKey = true;
+          context.logger.debug('Using user custom API key', { userId });
+
+          // Only check for user's custom model if they have an API key
+          const userModel = getUserDefaultModel(userId);
+          if (userModel) {
+            modelToUse = userModel;
+            context.logger.debug('Using user custom model', { userId, model: userModel });
+          }
+
+          // Create a temporary client with user's key
+          llmClient = createOpenRouterClient(userApiKey, {
+            baseUrl: this.config?.ai?.openRouterBaseUrl,
+            defaultModel: modelToUse,
+            defaultTemperature: this.config?.ai?.temperature,
+            defaultMaxTokens: this.config?.ai?.maxTokens,
+            timeout: 180000,
+            headers: {
+              'HTTP-Referer': 'https://github.com/bot',
+              'X-Title': this.config?.bot.name ?? 'Bot',
+            },
+          });
+
+          // Create a response handler with the user's client for tool call follow-ups
+          responseHandler = new ResponseHandler(this.config, llmClient, this.requestTracker);
+        }
+      }
+    } catch (error) {
+      // If we fail to lookup user settings, just use defaults
+      context.logger.warn('Failed to lookup user settings, using defaults', {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     // Emit processing started event
@@ -135,7 +186,7 @@ export class AIPlugin implements MessageHandlerPlugin {
       userId: message.author.id,
       channelId: message.channel.id,
       content: message.content.substring(0, 200),
-      model: this.model,
+      model: modelToUse,
     });
 
     context.logger.info('AI processing started', {
@@ -143,6 +194,8 @@ export class AIPlugin implements MessageHandlerPlugin {
       author: message.author.name,
       contentLength: message.content.length,
       hasImages: message.attachments.some((a) => a.contentType?.startsWith('image/')),
+      usingUserKey,
+      model: modelToUse,
     });
 
     // Start typing indicator
@@ -166,8 +219,8 @@ export class AIPlugin implements MessageHandlerPlugin {
         toolCount: toolDefinitions?.length ?? 0,
       });
 
-      // Call the LLM
-      const response = await this.llm.chat({
+      // Call the LLM (using user's client if available)
+      const response = await llmClient.chat({
         messages,
         tools: toolDefinitions,
       });
@@ -185,7 +238,7 @@ export class AIPlugin implements MessageHandlerPlugin {
 
       // Handle tool calls if present
       if (choice.message.tool_calls && choice.message.tool_calls.length > 0) {
-        const result = await this.responseHandler.handleToolCalls(
+        const result = await responseHandler.handleToolCalls(
           message,
           choice.message.tool_calls,
           messages,
@@ -200,7 +253,7 @@ export class AIPlugin implements MessageHandlerPlugin {
           context.eventBus.fire('ai:response', {
             messageId: message.id,
             content: result.content.substring(0, 200),
-            model: this.model,
+            model: modelToUse,
             toolsUsed,
             totalDurationMs: Date.now() - startTime,
             promptTokens: response.usage?.prompt_tokens,
@@ -213,7 +266,7 @@ export class AIPlugin implements MessageHandlerPlugin {
             toolsUsed,
           });
 
-          await this.responseHandler.sendResponse(
+          await responseHandler.sendResponse(
             message,
             '✅ Tool executed successfully, but I encountered an issue generating a final response.',
             context,
@@ -231,13 +284,13 @@ export class AIPlugin implements MessageHandlerPlugin {
           ? content.map((p) => (p.type === 'text' ? p.text : '[image]')).join(' ')
           : content;
 
-        await this.responseHandler.sendResponse(message, contentStr, context);
+        await responseHandler.sendResponse(message, contentStr, context);
 
         // Emit response event
         context.eventBus.fire('ai:response', {
           messageId: message.id,
           content: contentStr.substring(0, 200),
-          model: this.model,
+          model: modelToUse,
           toolsUsed: [],
           totalDurationMs: Date.now() - startTime,
           promptTokens: response.usage?.prompt_tokens,
@@ -253,6 +306,21 @@ export class AIPlugin implements MessageHandlerPlugin {
       });
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Check if this might be a user API key issue
+      const isApiKeyError =
+        usingUserKey &&
+        (errorMessage.toLowerCase().includes('invalid') ||
+          errorMessage.toLowerCase().includes('unauthorized') ||
+          errorMessage.toLowerCase().includes('401') ||
+          errorMessage.toLowerCase().includes('api key'));
+
+      if (isApiKeyError) {
+        context.logger.warn('User API key may be invalid, consider falling back', {
+          messageId: message.id,
+          error: errorMessage,
+        });
+      }
 
       context.eventBus.fire('ai:error', {
         messageId: message.id,
@@ -276,9 +344,12 @@ export class AIPlugin implements MessageHandlerPlugin {
         userMessage = '⚠️ Rate limited. Please wait a moment and try again.';
       } else if (errorMessageLower.includes('moderation') || errorMessageLower.includes('content_filter')) {
         userMessage = '🚫 Your request was filtered by content safety systems.';
+      } else if (isApiKeyError) {
+        // Don't expose API key details to user
+        userMessage = '❌ There was an issue with your API configuration. Please check your settings.';
       }
 
-      await this.responseHandler.sendResponse(message, userMessage, context);
+      await responseHandler.sendResponse(message, userMessage, context);
     } finally {
       // Always stop typing indicator
       context.eventBus.fire('typing:stop', {

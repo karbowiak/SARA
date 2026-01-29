@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-05",
+  "seq": "05",
+  "title": "Review core/llm-client.ts LLM integration",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": false,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/llm-client.ts"],
+  "acceptance_criteria": [
+    "API key handling reviewed for security",
+    "Error handling and retry logic verified",
+    "Rate limiting and quota management checked",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/llm-client.ts"]
+}

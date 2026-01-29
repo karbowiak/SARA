@@ -1,0 +1,18 @@
+{
+  "id": "hybrid-profile-memory-system-04",
+  "seq": "04",
+  "title": "Add getMessagesForProfile() to messages repository",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": true,
+  "context_files": ["core/database/messages.ts", "core/database/client.ts", "core/database/index.ts"],
+  "acceptance_criteria": [
+    "ProfileMessage interface defined with channelName, timestamp, content, replyToUsername, replyToContent",
+    "getMessagesForProfile(params) function added to core/database/messages.ts",
+    "Fetches messages for user in guild within time range (daysBack param)",
+    "LEFT JOINs to get parent message content and username for replies",
+    "Returns messages ordered by timestamp DESC with limit param",
+    "Exported from core/database/index.ts"
+  ],
+  "deliverables": ["core/database/messages.ts (modified)"]
+}

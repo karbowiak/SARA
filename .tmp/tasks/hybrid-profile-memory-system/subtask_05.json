@@ -1,0 +1,15 @@
+{
+  "id": "hybrid-profile-memory-system-05",
+  "seq": "05",
+  "title": "Add profile config types to BotConfig",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["core/config.ts", "config/config.example.ts"],
+  "acceptance_criteria": [
+    "ProfileConfig interface added to core/config.ts with enabled, model, defaultDays, maxMessages, newProfileDays, newProfileMaxMessages",
+    "BotConfig interface updated with optional profile?: ProfileConfig",
+    "config/config.example.ts updated with commented profile config example"
+  ],
+  "deliverables": ["core/config.ts (modified)", "config/config.example.ts (modified)"]
+}

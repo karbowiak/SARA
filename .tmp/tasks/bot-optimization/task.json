@@ -1,0 +1,23 @@
+{
+  "id": "bot-optimization",
+  "name": "Discord Bot Performance & Security Optimization",
+  "status": "active",
+  "objective": "Fix critical performance bottlenecks, memory leaks, security issues, and optimize database operations across the bot codebase",
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/core/database",
+    "/Users/karbowiak/Private/bot/app/plugins/ai"
+  ],
+  "exit_criteria": [
+    "All critical (Phase 1) fixes deployed and tested",
+    "Memory leaks eliminated in Discord adapter",
+    "Vector search operations optimized with time-range filtering",
+    "All tool inputs validated with Zod schemas",
+    "No duplicate code (cosineSimilarity consolidated)",
+    "Tool call recursion depth limited",
+    "Database queries optimized (indexes verified, queries combined)"
+  ],
+  "subtask_count": 18,
+  "completed_count": 0,
+  "created_at": "2026-01-29T00:00:00Z"
+}

@@ -1,0 +1,15 @@
+{
+  "id": "bot-optimization-10",
+  "seq": "10",
+  "title": "Fix embedder API key caching issue",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/core/embedder.ts"],
+  "acceptance_criteria": [
+    "Remove static cache and read from config directly, OR add clearEmbedderCache() function",
+    "API key rotation works correctly without restart",
+    "Existing functionality unchanged"
+  ],
+  "deliverables": ["core/embedder.ts (remove cache or add invalidation)"]
+}

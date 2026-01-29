@@ -1,0 +1,24 @@
+{
+  "id": "bot-optimization-01",
+  "seq": "01",
+  "title": "Consolidate duplicate cosineSimilarity function",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/core/database/client.ts",
+    "/Users/karbowiak/Private/bot/core/database/memories.ts",
+    "/Users/karbowiak/Private/bot/core/database/knowledge.ts"
+  ],
+  "acceptance_criteria": [
+    "Only one cosineSimilarity function exists in client.ts",
+    "memories.ts imports cosineSimilarity from client.ts",
+    "knowledge.ts imports cosineSimilarity from client.ts",
+    "All existing tests pass"
+  ],
+  "deliverables": [
+    "core/database/client.ts (keep function)",
+    "core/database/memories.ts (remove function, add import)",
+    "core/database/knowledge.ts (remove function, add import)"
+  ]
+}

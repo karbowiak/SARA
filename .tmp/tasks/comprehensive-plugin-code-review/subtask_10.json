@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-10",
+  "seq": "10",
+  "title": "Review core/cli/ CLI framework",
+  "status": "pending",
+  "depends_on": ["01", "02", "03", "04", "05", "06"],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/cli/*.ts"],
+  "acceptance_criteria": [
+    "CLI command parsing and handling reviewed",
+    "Signature parsing and argument validation verified",
+    "Output formatting and error messages checked",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/cli/"]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "comprehensive-plugin-code-review-22",
+  "seq": "22",
+  "title": "Review app/plugins/ai/ai.plugin.ts and services/",
+  "status": "pending",
+  "depends_on": ["07", "08", "09", "21"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/ai.plugin.ts",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/services/*.ts"
+  ],
+  "acceptance_criteria": [
+    "AI message handling and orchestration reviewed",
+    "Tool access control filtering verified",
+    "Response generation and streaming checked",
+    "Conversation state management verified",
+    "Any security or performance issues documented"
+  ],
+  "deliverables": ["Review report for app/plugins/ai/"]
+}

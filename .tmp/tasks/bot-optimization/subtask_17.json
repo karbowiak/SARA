@@ -1,0 +1,31 @@
+{
+  "id": "bot-optimization-17",
+  "seq": "17",
+  "title": "Add Zod validation to all AI tools",
+  "status": "pending",
+  "depends_on": ["16"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/tools",
+    "/Users/karbowiak/Private/bot/core/types/tool.ts"
+  ],
+  "acceptance_criteria": [
+    "Each tool defines Zod schema for its parameters",
+    "All tools validate arguments with safeParse before use",
+    "Return consistent ToolResult error format on validation failure",
+    "Add reasonable length limits (e.g., content max 5000 chars)",
+    "All tools handle validation errors gracefully"
+  ],
+  "deliverables": [
+    "app/plugins/ai/tools/memory.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/web-search.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/knowledge-search.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/reminder.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/channel-history.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/last-seen.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/currency.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/thinking.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/image-generation.tool.ts (add Zod validation)",
+    "app/plugins/ai/tools/stream-alert.tool.ts (add Zod validation)"
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "id": "user-config-webhooks-url-reader-10",
+  "seq": "10",
+  "title": "Create URL reader tool",
+  "status": "pending",
+  "depends_on": ["09"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/tools/web-search.tool.ts",
+    "/Users/karbowiak/Private/bot/core/helpers/fetcher.ts",
+    "/Users/karbowiak/Private/bot/core/types/tool.ts"
+  ],
+  "acceptance_criteria": [
+    "File app/plugins/ai/tools/url-reader.tool.ts exists",
+    "Schema: { url: string } with clear description",
+    "Safety: blocks file://, localhost, 127.0.0.1, ::1, private IP ranges (10.x, 172.16-31.x, 192.168.x)",
+    "Timeout: 10 seconds max",
+    "Size limit: 500KB max response body",
+    "HTML: uses @mozilla/readability + linkedom to extract article content, converts to markdown",
+    "JSON: pretty prints the JSON",
+    "Plain text: returns as-is",
+    "Returns: { title, byline?, url, content, wordCount }",
+    "Handles errors gracefully (network, parsing, timeout)",
+    "validate() returns true (no external API key needed)",
+    "TypeScript compiles without errors"
+  ],
+  "deliverables": ["app/plugins/ai/tools/url-reader.tool.ts"]
+}

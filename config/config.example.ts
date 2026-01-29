@@ -345,6 +345,12 @@ const config: BotConfig = {
     profile: {},
 
     /**
+     * /config - Per-user configuration
+     * Set personal OpenRouter API key, default models, and image webhooks
+     */
+    config: {},
+
+    /**
      * reminder-timer - Background timer that delivers due reminders
      * Required for reminders to work
      */
@@ -488,6 +494,12 @@ const config: BotConfig = {
      * stream_alert - Manage stream alerts
      */
     stream_alert: {},
+
+    /**
+     * read_url - Fetch and extract content from web pages
+     * Uses Mozilla Readability for smart content extraction
+     */
+    read_url: {},
 
     // ============================================
     // More Examples (commented out)

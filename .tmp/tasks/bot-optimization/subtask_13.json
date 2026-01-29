@@ -1,0 +1,17 @@
+{
+  "id": "bot-optimization-13",
+  "seq": "13",
+  "title": "Implement channel history caching",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/app/plugins/ai/services/conversation.ts"],
+  "acceptance_criteria": [
+    "Add private historyCache Map with TTL (30-60s)",
+    "Check cache before DB query in channel history fetch",
+    "Cache invalidation after TTL expires",
+    "Existing behavior unchanged",
+    "Cache key includes channelId and relevant parameters"
+  ],
+  "deliverables": ["app/plugins/ai/services/conversation.ts (add caching to lines 82-120)"]
+}

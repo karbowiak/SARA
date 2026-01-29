@@ -1,0 +1,32 @@
+{
+  "id": "user-config-webhooks-url-reader-06",
+  "seq": "06",
+  "title": "Create /config command handler plugin",
+  "status": "pending",
+  "depends_on": ["02", "03", "04", "05"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/slash/memory/plugin.ts",
+    "/Users/karbowiak/Private/bot/core/database/user-settings.ts",
+    "/Users/karbowiak/Private/bot/app/helpers/openrouter.ts",
+    "/Users/karbowiak/Private/bot/app/helpers/webhook.ts"
+  ],
+  "acceptance_criteria": [
+    "File app/plugins/slash/config/plugin.ts exists",
+    "Implements CommandHandlerPlugin interface",
+    "Handles command:received for 'config' command",
+    "view: shows current settings (API key as '✓ Set' or 'Not set', never masked value)",
+    "api-key: shows modal for entering API key, validates with OpenRouter API before saving",
+    "api-key-clear: removes stored API key with confirmation button",
+    "chat-model: autocomplete shows models from getOpenRouterModels(), saves selection",
+    "image-models: autocomplete shows image models, allows multi-select, saves array",
+    "reset: clears all user settings with confirmation button",
+    "webhook add: shows modal for name, URL, categories (comma-separated), isDefault",
+    "webhook list: shows all webhooks with embeds",
+    "webhook remove: autocomplete shows user's webhooks, deletes selected",
+    "webhook test: autocomplete shows user's webhooks, calls testWebhook()",
+    "All responses are ephemeral",
+    "TypeScript compiles without errors"
+  ],
+  "deliverables": ["app/plugins/slash/config/plugin.ts"]
+}

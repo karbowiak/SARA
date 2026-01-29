@@ -1,0 +1,17 @@
+{
+  "id": "hybrid-profile-memory-system-02",
+  "seq": "02",
+  "title": "Add profile_update type to memories table CHECK constraint",
+  "status": "pending",
+  "depends_on": ["01"],
+  "parallel": false,
+  "context_files": ["migrations/001_create_messages.ts", "core/database/memories.ts"],
+  "acceptance_criteria": [
+    "Migration 012_add_profile_update_memory_type.ts created",
+    "Alters memories table to add 'profile_update' to type CHECK constraint",
+    "Existing data preserved during migration",
+    "MemoryType union in core/database/memories.ts updated to include 'profile_update'",
+    "bun cli.ts db:migrate runs successfully"
+  ],
+  "deliverables": ["migrations/012_add_profile_update_memory_type.ts"]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-03",
+  "seq": "03",
+  "title": "Review core/event-bus.ts communication layer",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": false,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/event-bus.ts"],
+  "acceptance_criteria": [
+    "Event bus reviewed for memory leaks and proper cleanup",
+    "Event listener management and unsubscription verified",
+    "Performance characteristics analyzed",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/event-bus.ts"]
+}

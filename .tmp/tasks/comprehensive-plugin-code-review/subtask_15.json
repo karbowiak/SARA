@@ -1,0 +1,19 @@
+{
+  "id": "comprehensive-plugin-code-review-15",
+  "seq": "15",
+  "title": "Review app/plugins/slash/profile/",
+  "status": "pending",
+  "depends_on": ["07", "08", "09"],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/Private/bot/app/plugins/slash/profile/"
+  ],
+  "acceptance_criteria": [
+    "Profile generation and management reviewed",
+    "User opt-out handling verified",
+    "Privacy of message history access checked",
+    "Any security or convention issues documented"
+  ],
+  "deliverables": ["Review report for app/plugins/slash/profile/"]
+}

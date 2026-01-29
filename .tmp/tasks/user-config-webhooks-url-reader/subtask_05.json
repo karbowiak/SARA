@@ -1,0 +1,24 @@
+{
+  "id": "user-config-webhooks-url-reader-05",
+  "seq": "05",
+  "title": "Create /config command definition",
+  "status": "pending",
+  "depends_on": ["02"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/slash/memory/command.ts",
+    "/Users/karbowiak/Private/bot/core/types/slash-command.ts"
+  ],
+  "acceptance_criteria": [
+    "File app/plugins/slash/config/command.ts exists",
+    "Command has subcommands: view, api-key, api-key-clear, chat-model, image-models, reset",
+    "Subcommand group 'webhook' with: add, list, remove, test",
+    "chat-model has autocomplete: true option for model selection",
+    "image-models has autocomplete: true option for model selection",
+    "webhook remove has autocomplete: true for webhook selection",
+    "webhook test has autocomplete: true for webhook selection",
+    "guildOnly: true to restrict to servers",
+    "TypeScript compiles without errors"
+  ],
+  "deliverables": ["app/plugins/slash/config/command.ts"]
+}

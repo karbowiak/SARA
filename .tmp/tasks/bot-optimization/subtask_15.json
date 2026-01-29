@@ -1,0 +1,16 @@
+{
+  "id": "bot-optimization-15",
+  "seq": "15",
+  "title": "Parallelize image processing",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/app/plugins/ai/services/image-processor.ts"],
+  "acceptance_criteria": [
+    "Replace sequential loop with Promise.all for parallel processing",
+    "Handle errors per-image gracefully (don't fail all on one error)",
+    "Response time improves for multiple images",
+    "Existing functionality unchanged"
+  ],
+  "deliverables": ["app/plugins/ai/services/image-processor.ts (parallelize lines 39-61)"]
+}

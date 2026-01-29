@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-24",
+  "seq": "24",
+  "title": "Review app/commands/ all CLI commands",
+  "status": "pending",
+  "depends_on": ["10"],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/app/commands/*.command.ts"],
+  "acceptance_criteria": [
+    "All CLI commands reviewed for correctness",
+    "Argument parsing and validation verified",
+    "Error handling and user messages checked",
+    "Any security or convention issues documented"
+  ],
+  "deliverables": ["Review report for app/commands/"]
+}

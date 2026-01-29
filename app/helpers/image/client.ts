@@ -24,7 +24,8 @@ const isDebugMode = () => process.argv.includes('--debug') || process.argv.inclu
  */
 export async function generateImage(request: ImageGenerationRequest): Promise<ImageGenerationResult> {
   const config = getBotConfig();
-  const apiKey = config?.tokens?.openrouter;
+  // Use provided API key (user's) or fall back to bot's key from config
+  const apiKey = request.apiKey || config?.tokens?.openrouter;
 
   if (!apiKey) {
     return {

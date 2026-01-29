@@ -1,0 +1,29 @@
+{
+  "id": "hybrid-profile-memory-system-06",
+  "seq": "06",
+  "title": "Create profile generator service",
+  "status": "pending",
+  "depends_on": ["03", "04", "05"],
+  "parallel": false,
+  "context_files": [
+    "core/database/profiles.ts",
+    "core/database/messages.ts",
+    "core/database/memories.ts",
+    "core/llm-client.ts",
+    "core/config.ts",
+    "app/plugins/ai/tools/memory.tool.ts"
+  ],
+  "acceptance_criteria": [
+    "app/services/profile-generator.ts created",
+    "GenerateProfileParams interface with userId, guildId, platform, isNewProfile flag",
+    "GenerateProfileResult interface with profile, messagesAnalyzed, wasUpdated",
+    "generateProfile() function fetches messages, existing profile, memories (including profile_update type)",
+    "Formats messages with reply context: #channel / timestamp / Username: content + reply context",
+    "Builds LLM prompt with existing profile (noting user edits to preserve), memories, profile_update flags",
+    "Requests JSON output with summary, personality, interests, facts",
+    "Uses config for model, defaultDays/maxMessages (update) vs newProfileDays/newProfileMaxMessages (new)",
+    "Saves generated profile via upsertProfile(), clears processed profile_update memories",
+    "Returns GenerateProfileResult"
+  ],
+  "deliverables": ["app/services/profile-generator.ts"]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "bot-optimization-03",
+  "seq": "03",
+  "title": "Add time-range pre-filtering to message vector search",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/core/database/messages.ts"],
+  "acceptance_criteria": [
+    "Add timeRangeMs optional parameter (default 30 days = 2592000000ms)",
+    "Add WHERE created_at > ? clause to filter before loading rows",
+    "Document filtering behavior in function JSDoc comment",
+    "Existing tests pass with default behavior"
+  ],
+  "deliverables": ["core/database/messages.ts (modify searchSimilar function)"]
+}

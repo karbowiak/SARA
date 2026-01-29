@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-25",
+  "seq": "25",
+  "title": "Review app/plugins/stream/ streaming functionality",
+  "status": "pending",
+  "depends_on": ["07", "08", "09"],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/app/plugins/stream/*.ts"],
+  "acceptance_criteria": [
+    "Stream service reviewed for API integration",
+    "Event handling and subscriptions verified",
+    "Error handling checked",
+    "Any security or convention issues documented"
+  ],
+  "deliverables": ["Review report for app/plugins/stream/"]
+}

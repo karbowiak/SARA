@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-01",
+  "seq": "01",
+  "title": "Review core/database/client.ts database foundation",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": false,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/database/client.ts"],
+  "acceptance_criteria": [
+    "Database client reviewed for connection pooling, error handling, and resource management",
+    "SQLite configuration and optimization checked",
+    "Proper cleanup and disconnect handling verified",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/database/client.ts"]
+}

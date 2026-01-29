@@ -1,0 +1,15 @@
+{
+  "id": "bot-optimization-11",
+  "seq": "11",
+  "title": "Add direct message lookup function",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/core/database/messages.ts"],
+  "acceptance_criteria": [
+    "New function getMessageByPlatformId(platform: string, platformMessageId: string)",
+    "Returns single message or null",
+    "Uses direct WHERE clause for lookup"
+  ],
+  "deliverables": ["core/database/messages.ts (add new function)"]
+}

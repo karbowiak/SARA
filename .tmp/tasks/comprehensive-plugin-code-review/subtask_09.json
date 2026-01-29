@@ -1,0 +1,16 @@
+{
+  "id": "comprehensive-plugin-code-review-09",
+  "seq": "09",
+  "title": "Review core/command-registry.ts slash command registration",
+  "status": "pending",
+  "depends_on": ["01", "02", "03", "04", "05", "06"],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/command-registry.ts"],
+  "acceptance_criteria": [
+    "Command registration and unregistration logic reviewed",
+    "Command storage and retrieval verified",
+    "Error handling for duplicate commands checked",
+    "Any issues documented with severity and location"
+  ],
+  "deliverables": ["Review report for core/command-registry.ts"]
+}

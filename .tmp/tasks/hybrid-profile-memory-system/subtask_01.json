@@ -1,0 +1,18 @@
+{
+  "id": "hybrid-profile-memory-system-01",
+  "seq": "01",
+  "title": "Create database migration for user_profiles table",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["migrations/001_create_messages.ts", "core/database/migrator.ts", "core/database/client.ts"],
+  "acceptance_criteria": [
+    "Migration file 011_create_user_profiles.ts created",
+    "user_profiles table has all columns: id, user_id (FK to users), guild_id, summary, personality, interests, facts, opted_out, messages_analyzed, last_generated_at, created_at, updated_at",
+    "UNIQUE constraint on (user_id, guild_id)",
+    "Index on (user_id, guild_id) and (opted_out)",
+    "Migration has proper up() and down() functions",
+    "bun cli.ts db:migrate runs successfully"
+  ],
+  "deliverables": ["migrations/011_create_user_profiles.ts"]
+}

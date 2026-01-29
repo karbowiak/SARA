@@ -1,0 +1,24 @@
+{
+  "id": "user-config-webhooks-url-reader-07",
+  "seq": "07",
+  "title": "Modify image-generation tool for webhook support",
+  "status": "pending",
+  "depends_on": ["02", "04"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/tools/image-generation.tool.ts",
+    "/Users/karbowiak/Private/bot/core/database/user-settings.ts",
+    "/Users/karbowiak/Private/bot/app/helpers/webhook.ts"
+  ],
+  "acceptance_criteria": [
+    "Schema adds parameters: webhookSend (boolean), webhookCategory (string)",
+    "Schema description dynamically includes user's webhook categories if any exist",
+    "If webhookSend=true: find webhook by category (or default), send image via sendToWebhook()",
+    "If webhookSend=false or no webhook found: send to channel as before",
+    "Uses user's API key from getUserApiKey() if set, else config key",
+    "Uses user's image models from getUserImageModels() if set, else config defaults",
+    "Success message indicates whether image was sent to webhook or channel",
+    "TypeScript compiles without errors"
+  ],
+  "deliverables": ["app/plugins/ai/tools/image-generation.tool.ts (modified)"]
+}

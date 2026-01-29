@@ -1,0 +1,22 @@
+{
+  "id": "comprehensive-plugin-code-review",
+  "name": "Comprehensive Plugin Code Review",
+  "status": "active",
+  "objective": "Review all plugins, core modules, adapters, and CLI commands for security, conventions, best practices, bugs, and performance",
+  "context_files": [
+    "/Users/karbowiak/Private/bot/AGENTS.md",
+    "/Users/karbowiak/.config/opencode/context/core/task-management/standards/task-schema.md"
+  ],
+  "exit_criteria": [
+    "All plugins reviewed and documented",
+    "All security issues identified",
+    "All convention violations documented",
+    "All bugs and performance issues cataloged",
+    "All core modules reviewed",
+    "Cross-plugin integration verified",
+    "Platform adapters reviewed"
+  ],
+  "subtask_count": 28,
+  "completed_count": 0,
+  "created_at": "2026-01-29T00:00:00Z"
+}

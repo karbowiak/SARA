@@ -1,0 +1,18 @@
+{
+  "id": "local-embedder-duplication-01",
+  "seq": "01",
+  "title": "Create local embedder module with transformers.js",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": false,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/core/embedder.ts"],
+  "acceptance_criteria": [
+    "Module exports initLocalEmbedder, isLocalEmbedderReady, localEmbed, localEmbedBatch, localCosineSimilarity",
+    "Uses Xenova/all-MiniLM-L6-v2 model from @xenova/transformers",
+    "Singleton pattern - model loaded once",
+    "Returns Float32Array embeddings (384 dimensions)",
+    "Cosine similarity computation works correctly",
+    "Proper TypeScript types and error handling"
+  ],
+  "deliverables": ["core/local-embedder.ts"]
+}

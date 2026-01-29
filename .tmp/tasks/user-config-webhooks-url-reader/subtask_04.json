@@ -1,0 +1,22 @@
+{
+  "id": "user-config-webhooks-url-reader-04",
+  "seq": "04",
+  "title": "Create Discord webhook helper",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/core/helpers/fetcher.ts",
+    "/Users/karbowiak/Private/bot/core/types/message.ts"
+  ],
+  "acceptance_criteria": [
+    "File app/helpers/webhook.ts exists",
+    "WebhookPayload type: { content?, embeds?, files?: { data: Buffer, filename: string }[], username?, avatarUrl? }",
+    "sendToWebhook(url, payload) sends content/embeds/files to Discord webhook URL",
+    "testWebhook(url, botName) sends test message with small base64 colored square image",
+    "Handles Discord webhook API response codes (2xx success, 4xx/5xx errors)",
+    "Returns { success: boolean, error?: string }",
+    "TypeScript compiles without errors"
+  ],
+  "deliverables": ["app/helpers/webhook.ts"]
+}

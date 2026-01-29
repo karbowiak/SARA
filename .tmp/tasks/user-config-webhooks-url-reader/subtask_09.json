@@ -1,0 +1,16 @@
+{
+  "id": "user-config-webhooks-url-reader-09",
+  "seq": "09",
+  "title": "Add readability dependencies",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/package.json"],
+  "acceptance_criteria": [
+    "@mozilla/readability package installed",
+    "linkedom package installed (DOM implementation for Node)",
+    "Packages appear in package.json dependencies",
+    "bun install completes without errors"
+  ],
+  "deliverables": ["package.json (modified)"]
+}

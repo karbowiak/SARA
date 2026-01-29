@@ -1,0 +1,17 @@
+{
+  "id": "bot-optimization-14",
+  "seq": "14",
+  "title": "Add request deduplication for embeddings",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/core/embedder.ts"],
+  "acceptance_criteria": [
+    "Add inFlightRequests Map to track pending requests",
+    "Check for existing promise before making new request",
+    "Clean up map entry after completion or error",
+    "Duplicate simultaneous requests reuse same promise",
+    "No memory leaks (entries cleaned up)"
+  ],
+  "deliverables": ["core/embedder.ts (add request deduplication)"]
+}

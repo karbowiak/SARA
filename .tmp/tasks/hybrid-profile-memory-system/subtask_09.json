@@ -1,0 +1,24 @@
+{
+  "id": "hybrid-profile-memory-system-09",
+  "seq": "09",
+  "title": "Create profile:generate CLI command",
+  "status": "pending",
+  "depends_on": ["06"],
+  "parallel": true,
+  "context_files": [
+    "app/commands/db.command.ts",
+    "app/services/profile-generator.ts",
+    "core/cli/command.ts",
+    "core/database/users.ts"
+  ],
+  "acceptance_criteria": [
+    "app/commands/profile-generate.command.ts created",
+    "Signature: profile:generate {--u|user=} {--g|guild=} {--d|days=} {--m|max-messages=} {--dry-run}",
+    "Validates user and guild options are provided",
+    "Looks up user by platform ID via getUserByPlatformId()",
+    "Calls generateProfile() from profile-generator service",
+    "--dry-run flag shows what would be generated without saving",
+    "Outputs result: messagesAnalyzed, profile sections, wasUpdated"
+  ],
+  "deliverables": ["app/commands/profile-generate.command.ts"]
+}

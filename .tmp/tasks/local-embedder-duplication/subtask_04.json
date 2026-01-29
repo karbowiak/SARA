@@ -1,0 +1,20 @@
+{
+  "id": "local-embedder-duplication-04",
+  "seq": "04",
+  "title": "Integrate RequestTracker into AI plugin",
+  "status": "pending",
+  "depends_on": ["03"],
+  "parallel": false,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/app/plugins/ai/ai.plugin.ts",
+    "/Users/karbowiak/Private/bot/app/plugins/ai/services/request-tracker.ts"
+  ],
+  "acceptance_criteria": [
+    "RequestTracker instantiated in AIPlugin.load()",
+    "Destroyed in AIPlugin.unload()",
+    "Available to ResponseHandler via property or parameter",
+    "No breaking changes to existing AI plugin functionality",
+    "Bot loads and unloads without errors"
+  ],
+  "deliverables": ["app/plugins/ai/ai.plugin.ts"]
+}

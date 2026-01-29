@@ -1,0 +1,17 @@
+{
+  "id": "comprehensive-plugin-code-review-26",
+  "seq": "26",
+  "title": "Review bot/discord/adapter.ts",
+  "status": "pending",
+  "depends_on": ["07", "08", "09", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "22", "23"],
+  "parallel": true,
+  "context_files": ["/Users/karbowiak/Private/bot/AGENTS.md", "/Users/karbowiak/Private/bot/bot/discord/adapter.ts"],
+  "acceptance_criteria": [
+    "Discord event translation reviewed",
+    "Access control verification before event emission verified",
+    "Slash command registration and handling checked",
+    "Interaction handling (buttons, selects, modals) verified",
+    "Any security or performance issues documented"
+  ],
+  "deliverables": ["Review report for bot/discord/adapter.ts"]
+}

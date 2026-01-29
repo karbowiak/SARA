@@ -1,0 +1,25 @@
+{
+  "id": "bot-optimization-18",
+  "seq": "18",
+  "title": "Database optimizations and index verification",
+  "status": "pending",
+  "depends_on": [],
+  "parallel": true,
+  "context_files": [
+    "/Users/karbowiak/Private/bot/core/database/knowledge.ts",
+    "/Users/karbowiak/Private/bot/core/database/memories.ts",
+    "/Users/karbowiak/Private/bot/migrations"
+  ],
+  "acceptance_criteria": [
+    "getKnowledgeTags queries only tags column (not full entries)",
+    "getMemoryCount combines two queries into one with conditional aggregation",
+    "Index verified/added on messages(platform, platform_message_id)",
+    "Query performance improves measurably",
+    "All existing functionality unchanged"
+  ],
+  "deliverables": [
+    "core/database/knowledge.ts (optimize getKnowledgeTags)",
+    "core/database/memories.ts (optimize getMemoryCount)",
+    "migrations/00X_add_message_platform_index.ts (if needed)"
+  ]
+}

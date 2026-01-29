@@ -158,12 +158,14 @@ export class DiscordAdapter {
     const messages = this.config?.guilds?.unauthorizedMessages;
     if (messages) {
       // Pick a random message if array, otherwise use the single string
-      const message = Array.isArray(messages) ? messages[Math.floor(Math.random() * messages.length)] : messages;
+      const messageText = Array.isArray(messages) ? messages[Math.floor(Math.random() * messages.length)] : messages;
+
+      if (!messageText) return; // Skip if no message
 
       for (const [, channel] of guild.channels.cache) {
         if (channel.isTextBased() && 'send' in channel) {
           try {
-            await channel.send(message);
+            await channel.send(messageText);
             break;
           } catch {
             // Ignore errors - we might not have permission
@@ -252,8 +254,8 @@ export class DiscordAdapter {
 
     // User updated (username/global name)
     this.client.on(Events.UserUpdate, (oldUser, newUser) => {
-      const prev = { username: oldUser.username, globalName: oldUser.globalName ?? undefined };
-      const next = { username: newUser.username, globalName: newUser.globalName ?? undefined };
+      const prev = { username: oldUser.username ?? undefined, globalName: oldUser.globalName ?? undefined };
+      const next = { username: newUser.username ?? undefined, globalName: newUser.globalName ?? undefined };
       this.updateUserNamesAcrossGuilds(newUser.id, prev, next);
     });
 
@@ -813,8 +815,23 @@ export class DiscordAdapter {
         id: a.id,
         filename: a.name,
         url: a.url,
+        proxyUrl: a.proxyURL,
         contentType: a.contentType ?? undefined,
         size: a.size,
+      })),
+      embeds: message.embeds.map((e) => ({
+        title: e.title ?? undefined,
+        description: e.description ?? undefined,
+        url: e.url ?? undefined,
+        color: e.color ?? undefined,
+        timestamp: e.timestamp ? new Date(e.timestamp) : undefined,
+        footer: e.footer ? { text: e.footer.text, iconUrl: e.footer.iconURL ?? undefined } : undefined,
+        thumbnail: e.thumbnail ? { url: e.thumbnail.proxyURL || e.thumbnail.url } : undefined,
+        image: e.image ? { url: e.image.proxyURL || e.image.url } : undefined,
+        author: e.author
+          ? { name: e.author.name, url: e.author.url ?? undefined, iconUrl: e.author.iconURL ?? undefined }
+          : undefined,
+        fields: e.fields?.map((f) => ({ name: f.name, value: f.value, inline: f.inline })),
       })),
       guildId: message.guildId ?? undefined,
       guildName: message.guild?.name ?? undefined,

@@ -48,7 +48,10 @@ export interface BotChannel {
 export interface BotAttachment {
   id: string;
   filename: string;
+  /** Original URL (direct Discord CDN link, may have expiring auth tokens) */
   url: string;
+  /** Discord's CDN proxy URL (more reliable, cached) - preferred for downloads */
+  proxyUrl?: string;
   contentType?: string;
   size?: number;
 }
@@ -62,6 +65,8 @@ export interface BotMessage {
   author: BotUser;
   channel: BotChannel;
   attachments: BotAttachment[];
+  /** Embeds from the message (link previews, rich embeds) */
+  embeds?: BotEmbed[];
   /** Message this is a direct reply to (Discord: reply reference, Slack: unused) */
   replyToId?: string;
   /** Thread this message belongs to (Slack: thread_ts, Discord: unused - threads have own channel ID) */

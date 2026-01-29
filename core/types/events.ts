@@ -117,6 +117,10 @@ export interface EventMap {
   'ai:response': AIResponseGenerated;
   'ai:error': AIError;
 
+  // Stream events (Twitch, Kick, etc.)
+  'stream:live': { platform: string; channelId: string; channelName: string; streamTitle?: string };
+  'stream:offline': { platform: string; channelId: string; channelName: string };
+
   // Internal events
   'plugin:loaded': { pluginId: string };
   'plugin:unloaded': { pluginId: string };

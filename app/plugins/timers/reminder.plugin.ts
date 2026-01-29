@@ -166,7 +166,9 @@ Write a short, friendly comment to go with this reminder (like "Time to get thin
         ],
       });
 
-      return response.choices[0]?.message?.content?.trim() ?? null;
+      const content = response.choices[0]?.message?.content;
+      const contentStr = typeof content === 'string' ? content.trim() : null;
+      return contentStr ?? null;
     } catch (error) {
       context.logger.debug('[Reminder] AI comment generation failed', {
         error: error instanceof Error ? error.message : String(error),

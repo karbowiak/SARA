@@ -15,7 +15,6 @@ export {
   registerCommand,
   unregisterCommand,
 } from './command-registry';
-
 // Config
 export {
   type AccessContext,

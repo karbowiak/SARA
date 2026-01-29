@@ -36,133 +36,166 @@ export class ResponseHandler {
       tool_calls: toolCalls,
     });
 
-    context.logger.info('Processing tool calls', {
+    const toolNames = toolCalls.map((tc) => tc.function.name);
+    context.logger.info('Processing tool calls in parallel', {
       messageId: message.id,
       toolCount: toolCalls.length,
-      tools: toolCalls.map((tc) => tc.function.name),
+      tools: toolNames,
     });
 
-    // Execute each tool call
-    for (const toolCall of toolCalls) {
-      const toolName = toolCall.function.name;
-      const tool = accessibleTools.find((t) => t.schema.name === toolName);
+    // Execute tool calls in parallel
+    const toolResults = await Promise.all(
+      toolCalls.map(async (toolCall) => {
+        const toolName = toolCall.function.name;
+        const tool = accessibleTools.find((t) => t.schema.name === toolName);
+        const toolStartTime = Date.now();
 
-      // Emit tool call event
-      let args: Record<string, unknown> = {};
-      try {
-        args = JSON.parse(toolCall.function.arguments);
-      } catch {
-        args = { _raw: toolCall.function.arguments };
-      }
+        // Parse arguments
+        let args: Record<string, unknown> = {};
+        try {
+          args = JSON.parse(toolCall.function.arguments);
+        } catch {
+          args = { _raw: toolCall.function.arguments };
+        }
 
-      // If user provided an image and is asking for edits, pass reference image to image_generation
-      if (toolName === 'image_generation') {
-        args = this.injectReferenceImageIfNeeded(args, message);
-      }
+        // Inject reference image if needed
+        if (toolName === 'image_generation') {
+          args = this.injectReferenceImageIfNeeded(args, message);
+        }
 
-      context.eventBus.fire('ai:tool_call', {
-        messageId: message.id,
-        toolName,
-        toolCallId: toolCall.id,
-        arguments: args,
-      });
-
-      if (!tool) {
-        context.logger.warn('Tool not found', { toolName });
-
-        context.eventBus.fire('ai:tool_result', {
+        context.eventBus.fire('ai:tool_call', {
           messageId: message.id,
           toolName,
           toolCallId: toolCall.id,
-          success: false,
-          durationMs: 0,
-          error: `Tool ${toolName} not found`,
+          arguments: args,
         });
 
-        messages.push({
-          role: 'tool',
-          content: JSON.stringify({ error: `Tool ${toolName} not found` }),
-          tool_call_id: toolCall.id,
-        });
-        continue;
+        // Handle missing tool
+        if (!tool) {
+          context.logger.warn('Tool not found', { toolName });
+
+          context.eventBus.fire('ai:tool_result', {
+            messageId: message.id,
+            toolName,
+            toolCallId: toolCall.id,
+            success: false,
+            durationMs: 0,
+            error: `Tool ${toolName} not found`,
+          });
+
+          return {
+            toolCall,
+            toolName,
+            success: false,
+            durationMs: 0,
+            content: JSON.stringify({ error: `Tool ${toolName} not found` }),
+          };
+        }
+
+        // Execute tool with error isolation
+        try {
+          const execContext: ToolExecutionContext = {
+            message,
+            user: message.author,
+            channel: message.channel,
+            logger: context.logger,
+            eventBus: context.eventBus,
+          };
+
+          context.logger.debug('Executing tool', {
+            tool: toolName,
+            args,
+          });
+
+          const result = await tool.execute(args, execContext);
+          const durationMs = Date.now() - toolStartTime;
+
+          context.eventBus.fire('ai:tool_result', {
+            messageId: message.id,
+            toolName,
+            toolCallId: toolCall.id,
+            success: result.success,
+            durationMs,
+            result: result.success ? result.data : undefined,
+            error: result.success ? undefined : result.error?.message,
+          });
+
+          context.logger.info('Tool executed', {
+            tool: toolName,
+            success: result.success,
+            durationMs,
+          });
+
+          const toolResultContent = result.success
+            ? result.data
+            : {
+                error: true,
+                type: result.error?.type ?? 'unknown_error',
+                message: result.error?.message ?? 'Tool execution failed',
+                suggestion: 'Please inform the user about this error and suggest alternatives if possible.',
+              };
+
+          return {
+            toolCall,
+            toolName,
+            success: result.success,
+            durationMs,
+            content: JSON.stringify(toolResultContent),
+          };
+        } catch (error) {
+          const durationMs = Date.now() - toolStartTime;
+          const errorMessage = error instanceof Error ? error.message : String(error);
+
+          context.eventBus.fire('ai:tool_result', {
+            messageId: message.id,
+            toolName,
+            toolCallId: toolCall.id,
+            success: false,
+            durationMs,
+            error: errorMessage,
+          });
+
+          context.logger.error('Tool execution failed', {
+            tool: toolName,
+            error: errorMessage,
+            durationMs,
+          });
+
+          return {
+            toolCall,
+            toolName,
+            success: false,
+            durationMs,
+            content: JSON.stringify({ error: errorMessage }),
+          };
+        }
+      }),
+    );
+
+    // Log parallel execution results
+    const totalDuration = Math.max(...toolResults.map((r) => r.durationMs));
+    const successCount = toolResults.filter((r) => r.success).length;
+    context.logger.info('Parallel tool execution completed', {
+      messageId: message.id,
+      totalDuration,
+      successCount,
+      failureCount: toolResults.length - successCount,
+    });
+
+    // Add tool names to toolsUsed array (only successful ones with actual tools)
+    for (const result of toolResults) {
+      if (result.success && result.toolName !== 'Tool not found') {
+        toolsUsed.push(result.toolName);
       }
+    }
 
-      toolsUsed.push(toolName);
-      const toolStartTime = Date.now();
-
-      try {
-        const execContext: ToolExecutionContext = {
-          message,
-          user: message.author,
-          channel: message.channel,
-          logger: context.logger,
-          eventBus: context.eventBus,
-        };
-
-        context.logger.debug('Executing tool', {
-          tool: toolName,
-          args,
-        });
-
-        const result = await tool.execute(args, execContext);
-        const durationMs = Date.now() - toolStartTime;
-
-        context.eventBus.fire('ai:tool_result', {
-          messageId: message.id,
-          toolName,
-          toolCallId: toolCall.id,
-          success: result.success,
-          durationMs,
-          result: result.success ? result.data : undefined,
-          error: result.success ? undefined : result.error?.message,
-        });
-
-        context.logger.info('Tool executed', {
-          tool: toolName,
-          success: result.success,
-          durationMs,
-        });
-
-        // Format error messages more descriptively for the LLM
-        const toolResultContent = result.success
-          ? result.data
-          : {
-              error: true,
-              type: result.error?.type ?? 'unknown_error',
-              message: result.error?.message ?? 'Tool execution failed',
-              suggestion: 'Please inform the user about this error and suggest alternatives if possible.',
-            };
-
-        messages.push({
-          role: 'tool',
-          content: JSON.stringify(toolResultContent),
-          tool_call_id: toolCall.id,
-        });
-      } catch (error) {
-        const durationMs = Date.now() - toolStartTime;
-        const errorMessage = error instanceof Error ? error.message : String(error);
-
-        context.eventBus.fire('ai:tool_result', {
-          messageId: message.id,
-          toolName,
-          toolCallId: toolCall.id,
-          success: false,
-          durationMs,
-          error: errorMessage,
-        });
-
-        context.logger.error('Tool execution failed', {
-          tool: toolName,
-          error: errorMessage,
-          durationMs,
-        });
-
-        messages.push({
-          role: 'tool',
-          content: JSON.stringify({ error: errorMessage }),
-          tool_call_id: toolCall.id,
-        });
-      }
+    // Push tool results to messages array in original order
+    for (const result of toolResults) {
+      messages.push({
+        role: 'tool',
+        content: result.content,
+        tool_call_id: result.toolCall.id,
+      } as import('@core').ChatMessage);
     }
 
     // Track if any tools failed
@@ -180,7 +213,9 @@ export class ResponseHandler {
 
     // Get final response after tool execution
     context.logger.debug('Getting final response after tool calls');
+    const llmCallStartTime = Date.now();
     const response = await this.llm.chat({ messages });
+    const llmCallDuration = Date.now() - llmCallStartTime;
     const contentRaw = response.choices[0]?.message.content ?? null;
     const content = typeof contentRaw === 'string' ? contentRaw : null;
     const finishReason = response.choices[0]?.finish_reason;
@@ -188,7 +223,7 @@ export class ResponseHandler {
 
     context.logger.info('Second LLM call completed', {
       messageId: message.id,
-      durationMs: Date.now() - Date.now(),
+      durationMs: llmCallDuration,
       hasContent: !!content,
       finishReason,
       hasNewToolCalls: !!newToolCalls && newToolCalls.length > 0,

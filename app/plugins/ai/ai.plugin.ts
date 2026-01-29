@@ -27,9 +27,6 @@ import { ResponseHandler } from './services/response-handler';
 /** Fallback model if not configured */
 const FALLBACK_MODEL = 'x-ai/grok-4.1-fast';
 
-/** Number of recent messages to include in conversation history */
-const HISTORY_LIMIT = 5;
-
 export class AIPlugin implements MessageHandlerPlugin {
   readonly id = 'ai';
   readonly type = 'message' as const;
@@ -108,6 +105,9 @@ export class AIPlugin implements MessageHandlerPlugin {
     return true;
   }
 
+  /**
+   * Handle incoming message - main entry point
+   */
   async handle(message: BotMessage, context: PluginContext): Promise<void> {
     const startTime = Date.now();
     const toolsUsed: string[] = [];
@@ -116,12 +116,6 @@ export class AIPlugin implements MessageHandlerPlugin {
       context.logger.error('LLM client not initialized');
       return;
     }
-
-    // DEBUG: Check if handle is being called multiple times
-    context.logger.debug('[AIPlugin] handle() called', {
-      messageId: message.id,
-      content: message.content.substring(0, 50),
-    });
 
     // Emit processing started event
     context.eventBus.fire('ai:processing', {
@@ -199,11 +193,6 @@ export class AIPlugin implements MessageHandlerPlugin {
             totalDurationMs: Date.now() - startTime,
             promptTokens: response.usage?.prompt_tokens,
             completionTokens: response.usage?.completion_tokens,
-          });
-          context.logger.debug('[AIPlugin] About to send response', {
-            messageId: message.id,
-            contentLength: result.content.length,
-            content: result.content.substring(0, 100),
           });
         } else {
           // Second LLM call failed or returned null - send fallback message

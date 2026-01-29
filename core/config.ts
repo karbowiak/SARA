@@ -148,10 +148,53 @@ export type ToolsConfig = Record<string, FeatureAccess>;
  * Guild whitelist configuration
  */
 export interface GuildsConfig {
-  /** If set, only these guild IDs are allowed. Bot leaves all others. */
   whitelist?: string[];
-  /** Message(s) to send before leaving unauthorized guilds. If array, picks one at random. */
   unauthorizedMessages?: string | string[];
+}
+
+/**
+ * Channel configuration for auto-Immich uploads
+ */
+export interface ImmichChannelConfig {
+  /** Guild ID to monitor */
+  guildId: string;
+  /** Channel ID to monitor */
+  channelId: string;
+  /** Immich album name to upload to */
+  album: string;
+  /** Archive uploaded assets (hide from timeline). Defaults to ImmichConfig.archiveAssets */
+  archive?: boolean;
+}
+
+/**
+ * Immich configuration for media uploads
+ */
+export interface ImmichConfig {
+  /** Whether Immich integration is enabled */
+  enabled: boolean;
+  /** Immich server URL */
+  url: string;
+  /** Immich API key */
+  apiKey: string;
+  /** Archive uploaded assets (hide from timeline) */
+  archiveAssets: boolean;
+  /** Channels to automatically upload images from */
+  channels?: ImmichChannelConfig[];
+}
+
+/**
+ * Complete bot configuration
+ */
+export interface BotConfig {
+  tokens: TokensConfig;
+  bot: BotIdentityConfig;
+  ai?: AIBehaviorConfig;
+  personality: PersonalityConfig;
+  accessGroups?: AccessGroups;
+  plugins?: PluginsConfig;
+  tools?: ToolsConfig;
+  guilds?: GuildsConfig;
+  immich?: ImmichConfig;
 }
 
 /**

@@ -5,7 +5,7 @@
  * Ported from Sarav2.
  */
 
-import { mkdir, stat, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, stat, unlink, utimes, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve } from 'node:path';
 import { validateUrl } from './security';
 
@@ -36,9 +36,9 @@ export async function cleanupFiles(filePaths: string[]): Promise<void> {
 }
 
 /**
- * Download a file from a URL to local path
+ * Download a file from a URL to local path (restricted to /tmp for security)
  */
-export async function downloadFile(url: string, outputPath: string): Promise<void> {
+export async function downloadFile(url: string, outputPath: string, mtime?: Date): Promise<void> {
   try {
     // Validate URL for security
     const validation = validateUrl(url, { allowPrivateIps: false });
@@ -82,7 +82,65 @@ export async function downloadFile(url: string, outputPath: string): Promise<voi
       const buffer = await response.arrayBuffer();
 
       // Write to file
-      await writeFile(outputPath, new Uint8Array(buffer));
+      await writeFile(outputPath, Buffer.from(buffer));
+
+      // Set modification time if provided
+      if (mtime) {
+        await utimes(outputPath, mtime, mtime);
+      }
+    } catch (error) {
+      clearTimeout(timeout);
+      throw error;
+    }
+  } catch (error) {
+    throw new Error(`Failed to download file from ${url}: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
+/**
+ * Download a file from a URL to any local path (caller responsible for path safety)
+ */
+export async function downloadFileCustom(url: string, outputPath: string, mtime?: Date): Promise<void> {
+  try {
+    // Validate URL for security
+    const validation = validateUrl(url, { allowPrivateIps: false });
+    if (!validation.valid) {
+      throw new Error(validation.error || 'Invalid URL');
+    }
+
+    // Ensure output directory exists
+    const outputDir = dirname(outputPath);
+    await ensureTempDirectory(outputDir);
+
+    // Create AbortController for timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      // Download file using fetch with timeout
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      // Get file content as ArrayBuffer
+      const buffer = await response.arrayBuffer();
+
+      // Write to file
+      await writeFile(outputPath, Buffer.from(buffer));
+
+      // Set modification time if provided
+      if (mtime) {
+        await utimes(outputPath, mtime, mtime);
+      }
     } catch (error) {
       clearTimeout(timeout);
       throw error;

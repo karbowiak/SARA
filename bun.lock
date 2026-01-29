@@ -5,6 +5,7 @@
     "": {
       "name": "bot",
       "dependencies": {
+        "@immich/sdk": "^2.5.0",
         "@slack/bolt": "^4.6.0",
         "@xenova/transformers": "^2.17.2",
         "better-sqlite3": "^12.6.0",
@@ -111,7 +112,11 @@
 
     "@img/sharp-win32-x64": ["@img/sharp-win32-x64@0.34.5", "", { "os": "win32", "cpu": "x64" }, "sha512-+29YMsqY2/9eFEiW93eqWnuLcWcufowXewwSNIT6UwZdUUCrM3oFjMWH/Z6/TMmb4hlFenmfAVbpWeup2jryCw=="],
 
+    "@immich/sdk": ["@immich/sdk@2.5.0", "", { "dependencies": { "@oazapfts/runtime": "^1.0.2" } }, "sha512-H/DMmJ84EXFMqg8SUjk1XaxQ6PfS4oVfTCTMbiRwaSZM5MDDY7sJzFBJX/2G2tIPJCy0YL/KQUp06k5wsToNYg=="],
+
     "@lifeomic/attempt": ["@lifeomic/attempt@3.1.0", "", {}, "sha512-QZqem4QuAnAyzfz+Gj5/+SLxqwCAw2qmt7732ZXodr6VDWGeYLG6w1i/vYLa55JQM9wRuBKLmXmiZ2P0LtE5rw=="],
+
+    "@oazapfts/runtime": ["@oazapfts/runtime@1.1.0", "", {}, "sha512-PwCn69pexqg/uhc0bpEHSlRFdfTtSnq3icXHd0wf4BQwZSMKsCerTnydzegVScEegYkokzIxMcl9li7on86A2w=="],
 
     "@protobufjs/aspromise": ["@protobufjs/aspromise@1.1.2", "", {}, "sha512-j+gKExEuLmKwvz3OgROXtrJ2UG2x8Ch2YZUxahh+s1F2HZ+wAceUNLkvy6zKCPVRkU++ZWQrdxsUeQXmcg4uoQ=="],
 

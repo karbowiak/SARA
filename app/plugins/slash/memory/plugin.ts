@@ -367,8 +367,9 @@ User's name: ${username}`,
         ],
       });
 
-      const result = response.choices[0]?.message?.content?.trim();
-      return result && result.length > 0 && result.length < 500 ? result : null;
+      const result = response.choices[0]?.message?.content;
+      const resultStr = typeof result === 'string' ? result.trim() : null;
+      return resultStr && resultStr.length > 0 && resultStr.length < 500 ? resultStr : null;
     } catch {
       return null;
     }

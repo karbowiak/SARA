@@ -13,6 +13,7 @@ export class StreamAlertTool implements Tool {
     author: 'SARA',
     keywords: ['stream', 'alert', 'twitch', 'kick', 'live'],
     category: 'utility',
+    priority: 5,
   };
 
   readonly schema: ToolSchema = {
@@ -52,7 +53,7 @@ export class StreamAlertTool implements Tool {
       channel?: string;
     };
 
-    const guildId = context.channel.type === 'guild' ? context.channel.data.guild_id : 'dm';
+    const guildId = context.channel.guildId || 'dm';
 
     if (params.action === 'list') {
       const subs = getSubscriptions(params.platform); // Filter by platform if provided
@@ -68,7 +69,13 @@ export class StreamAlertTool implements Tool {
     }
 
     if (!params.platform || !params.channel) {
-      return { success: false, error: 'Platform and channel are required for add/remove actions.' };
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: 'Platform and channel are required for add/remove actions.',
+        },
+      };
     }
 
     if (params.action === 'add') {
@@ -82,7 +89,13 @@ export class StreamAlertTool implements Tool {
         });
         return { success: true, data: `✅ Added alert for ${params.platform}/${params.channel}` };
       } catch (error) {
-        return { success: false, error: `Failed to add alert: ${error}` };
+        return {
+          success: false,
+          error: {
+            type: 'execution_error',
+            message: `Failed to add alert: ${error}`,
+          },
+        };
       }
     }
 
@@ -91,9 +104,21 @@ export class StreamAlertTool implements Tool {
       if (removed) {
         return { success: true, data: `🗑️ Removed alert for ${params.platform}/${params.channel}` };
       }
-      return { success: false, error: 'Subscription not found.' };
+      return {
+        success: false,
+        error: {
+          type: 'not_found',
+          message: 'Subscription not found.',
+        },
+      };
     }
 
-    return { success: false, error: 'Invalid action' };
+    return {
+      success: false,
+      error: {
+        type: 'validation_error',
+        message: 'Invalid action',
+      },
+    };
   }
 }

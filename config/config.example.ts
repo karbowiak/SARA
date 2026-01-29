@@ -512,6 +512,48 @@ const config: BotConfig = {
     //   groups: ['moderator'], // Remember: admins are in moderator group too
     // },
   },
+
+  // ============================================
+  // IMMICH INTEGRATION (Optional)
+  // ============================================
+  /**
+   * Configure Immich integration for automatic image archival.
+   * Images/videos posted in configured channels will be automatically
+   * uploaded to the specified Immich albums.
+   */
+  immich: {
+    /** Whether Immich integration is enabled */
+    enabled: false,
+
+    /** Immich server URL */
+    url: 'https://immich.example.com',
+
+    /** Immich API key (generate in Immich settings) */
+    apiKey: 'your-immich-api-key',
+
+    /** Archive uploaded assets by default (hide from timeline) */
+    archiveAssets: true,
+
+    /**
+     * Channels to automatically upload images from
+     * Images/videos posted in these channels will be uploaded to the specified Immich album
+     */
+    channels: [
+      {
+        guildId: '123456789012345678', // Discord server ID
+        channelId: '987654321098765432', // Discord channel ID
+        album: 'my-album', // Immich album name (created if doesn't exist)
+        archive: true, // Override archiveAssets for this channel (optional)
+      },
+      // Add more channels as needed:
+      // {
+      //   guildId: '111222333444555666',
+      //   channelId: '666555444333222111',
+      //   album: 'another-album',
+      //   archive: false, // Show in timeline
+      // },
+    ],
+  },
 };
 
 export default config;

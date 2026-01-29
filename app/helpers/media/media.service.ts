@@ -13,9 +13,11 @@ export type { MediaResult, SocialPlatform } from './types';
 
 export class MediaService {
   private handlers: MediaHandler[] = [];
+  private logger?: { info: (msg: string) => void; error: (msg: string, meta?: any) => void };
 
-  constructor() {
+  constructor(logger?: { info: (msg: string) => void; error: (msg: string, meta?: any) => void }) {
     this.handlers = [new InstagramHandler(), new TikTokHandler(), new RedditHandler()];
+    this.logger = logger;
   }
 
   /**
@@ -33,7 +35,9 @@ export class MediaService {
    * Returns a MediaResult with either file paths or buffers ready to upload
    */
   async processMedia(url: string, _platform?: SocialPlatform): Promise<MediaResult> {
-    console.log(`Processing URL: ${url}`);
+    if (this.logger) {
+      this.logger.info(`Processing URL: ${url}`);
+    }
 
     // Find appropriate handler
     const handler = this.handlers.find((h) => h.canHandle(url));
@@ -50,7 +54,9 @@ export class MediaService {
       const result = await handler.process(url);
       return result;
     } catch (error) {
-      console.error('Error processing media:', error);
+      if (this.logger) {
+        this.logger.error('Error processing media:', { error });
+      }
       return {
         success: false,
         platform: 'twitter',

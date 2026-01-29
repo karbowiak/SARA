@@ -115,6 +115,13 @@ const config: BotConfig = {
     maxTokens: 4096,
 
     /**
+     * OpenRouter API base URL (optional)
+     * Defaults to 'https://openrouter.ai/api/v1' if not specified
+     * Override for testing or alternative endpoints
+     */
+    openRouterBaseUrl: 'https://openrouter.ai/api/v1',
+
+    /**
      * Model for image generation (image_generation tool)
      * Must support image generation via modalities parameter
      *

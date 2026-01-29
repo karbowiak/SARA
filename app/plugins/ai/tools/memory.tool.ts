@@ -16,6 +16,7 @@ import {
   saveMemory,
   searchMemories,
 } from '@core/database';
+import { z } from 'zod';
 
 export class MemoryTool implements Tool {
   readonly metadata: ToolMetadata = {
@@ -89,14 +90,29 @@ Memory types:
     strict: true,
   };
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    action: z.enum(['save', 'recall', 'forget']),
+    type: z.enum(['preference', 'fact', 'instruction', 'context']).optional(),
+    content: z.string().max(5000).optional(),
+    memory_id: z.number().int().positive().optional(),
+    source: z.enum(['explicit', 'inferred']).optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
-    const params = args as {
-      action: 'save' | 'recall' | 'forget';
-      type?: MemoryType;
-      content?: string;
-      memory_id?: number;
-      source?: 'explicit' | 'inferred';
-    };
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
+    const params = parseResult.data;
 
     // Get user's internal ID
     const user = getUserByPlatformId(context.message.platform, context.user.id);

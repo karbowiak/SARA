@@ -12,6 +12,7 @@
 
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getBotConfig } from '@core';
+import { z } from 'zod';
 
 interface ThinkingArgs {
   problem: string;
@@ -88,7 +89,25 @@ export class ThinkingTool implements Tool {
     return !!config?.tokens?.openrouter;
   }
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    problem: z.string().min(1).max(5000),
+    context: z.string().max(5000).optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
     const config = getBotConfig();
     const apiKey = config?.tokens?.openrouter;
 
@@ -103,7 +122,7 @@ export class ThinkingTool implements Tool {
     }
 
     try {
-      const params = args as ThinkingArgs;
+      const params = parseResult.data;
       const { problem, context: additionalContext } = params;
 
       // Use a reasoning model - defaults to o1-mini
@@ -125,8 +144,11 @@ export class ThinkingTool implements Tool {
 
       thinkingPrompt += `\nProvide a well-reasoned analysis with clear step-by-step thinking where appropriate.`;
 
+      // Get base URL from config
+      const baseUrl = config.ai?.openRouterBaseUrl ?? 'https://openrouter.ai/api/v1';
+
       // Call the reasoning model via OpenRouter
-      const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      const response = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${apiKey}`,

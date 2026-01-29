@@ -15,6 +15,7 @@ import {
   getUserReminderCount,
   type Reminder,
 } from '@core/database';
+import { z } from 'zod';
 
 export class ReminderTool implements Tool {
   readonly metadata: ToolMetadata = {
@@ -82,15 +83,30 @@ RECURRING:
     strict: true,
   };
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    action: z.enum(['create', 'list', 'cancel']),
+    message: z.string().min(1).max(500).optional(),
+    trigger_at_utc: z.string().datetime().optional(),
+    repeat: z.enum(['daily', 'weekly', 'monthly']).optional(),
+    repeat_until_utc: z.string().datetime().optional(),
+    reminder_id: z.number().int().positive().optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
-    const params = args as {
-      action: 'create' | 'list' | 'cancel';
-      message?: string;
-      trigger_at_utc?: string;
-      repeat?: 'daily' | 'weekly' | 'monthly';
-      repeat_until_utc?: string;
-      reminder_id?: number;
-    };
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
+    const params = parseResult.data;
 
     context.logger.debug('[ReminderTool] Executing', { action: params.action });
 

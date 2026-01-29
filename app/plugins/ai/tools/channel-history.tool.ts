@@ -6,9 +6,11 @@
  * 2. Search for relevant messages using semantic search
  */
 
+import { formatAge } from '@app/helpers/prompt-builder';
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getRecentMessages, type SimilarMessage, type StoredMessage, searchSimilar } from '@core/database';
 import { embed, isEmbedderReady } from '@core/embedder';
+import { z } from 'zod';
 
 export class ChannelHistoryTool implements Tool {
   readonly metadata: ToolMetadata = {
@@ -54,12 +56,27 @@ export class ChannelHistoryTool implements Tool {
     return true; // Always available
   }
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    mode: z.enum(['recent', 'search']),
+    query: z.string().min(3).max(1000).optional(),
+    limit: z.number().int().min(1).max(100).optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
-    const params = args as {
-      mode: 'recent' | 'search';
-      query?: string;
-      limit?: number;
-    };
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
+    const params = parseResult.data;
 
     const { mode, query, limit: requestedLimit } = params;
     const channelId = context.channel.id;
@@ -191,7 +208,7 @@ export class ChannelHistoryTool implements Tool {
       // Format results with relevance info
       const formatted = results.map((r: SimilarMessage) => ({
         timestamp: new Date(r.timestamp).toISOString(),
-        age: this.formatAge(r.timestamp),
+        age: formatAge(r.timestamp, false),
         user: r.userName,
         content: r.content,
         relevance: `${Math.round(r.score * 100)}%`,
@@ -223,20 +240,5 @@ export class ChannelHistoryTool implements Tool {
         },
       };
     }
-  }
-
-  /**
-   * Format timestamp as human-readable age
-   */
-  private formatAge(timestamp: number): string {
-    const age = Date.now() - timestamp;
-    const minutes = Math.floor(age / 60000);
-    const hours = Math.floor(age / 3600000);
-    const days = Math.floor(age / 86400000);
-
-    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
-    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
-    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
-    return 'just now';
   }
 }

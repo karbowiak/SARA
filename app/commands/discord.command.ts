@@ -8,6 +8,7 @@ import {
   type PluginContext,
   unloadPlugins,
 } from '@core';
+import { initLocalEmbedder } from '@core/local-embedder';
 import path from 'path';
 import { DiscordAdapter } from '../../bot/discord/adapter';
 import { initDatabase, migrate } from '../../core/database';
@@ -71,6 +72,16 @@ export default class DiscordCommand extends Command {
     if (!skipEmbedder) {
       this.info('Initializing embedding model...');
       await initEmbedder();
+    }
+
+    // Initialize local embedder for duplicate detection
+    this.info('Initializing local embedder...');
+    try {
+      await initLocalEmbedder();
+      this.success('Local embedder ready');
+    } catch (error) {
+      this.error(`Failed to initialize local embedder: ${error instanceof Error ? error.message : String(error)}`);
+      this.warning('Bot will continue without duplicate detection');
     }
 
     // Create EventBus

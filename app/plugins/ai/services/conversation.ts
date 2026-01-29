@@ -1,16 +1,20 @@
 import type { BotConfig, BotMessage, ChatMessage, ContentPart, PluginContext, Tool } from '@core';
 import { getBotConfig } from '@core';
-import { getRecentMessages } from '@core/database';
+import { getMessageByPlatformId, getRecentMessages, type StoredMessage } from '@core/database';
 import { buildFullSystemPrompt } from '../../../helpers/prompt-builder';
 import type { ImageProcessor } from './image-processor';
+import type { RequestTracker } from './request-tracker';
 
 /** Number of recent messages to include in conversation history */
 const HISTORY_LIMIT = 5;
 
 export class ConversationService {
+  private historyCache = new Map<string, { messages: StoredMessage[]; fetchedAt: number }>();
+
   constructor(
     private config: BotConfig | undefined,
     private imageProcessor: ImageProcessor,
+    private requestTracker: RequestTracker | undefined,
   ) {}
 
   /**
@@ -35,6 +39,18 @@ export class ConversationService {
     // Build channel history as formatted text (NOT as separate LLM turns)
     const channelHistory = this.buildChannelHistoryContext(message);
 
+    // Build additional context sections
+    const contextSections: string[] = [];
+    if (imageRetryContext) contextSections.push(imageRetryContext);
+    if (imageContext) contextSections.push(imageContext);
+
+    // Add pending requests context
+    const pendingContext = this.buildPendingRequestsContext(message);
+    if (pendingContext) contextSections.push(pendingContext);
+
+    // Combine sections
+    const additionalContext = contextSections.length > 0 ? contextSections.join('\n\n---\n\n') : undefined;
+
     // Build system prompt with all context using centralized helper
     const { systemPrompt, debug } = await buildFullSystemPrompt(config, {
       messageContent: message.content,
@@ -47,8 +63,7 @@ export class ConversationService {
       userName: message.author.displayName ?? message.author.name,
       tools: tools.length > 0 ? tools : undefined,
       channelHistory: channelHistory || undefined,
-      additionalContext:
-        [imageRetryContext, imageContext].filter((part): part is string => Boolean(part)).join('\n\n') || undefined,
+      additionalContext,
     });
 
     // Log what was loaded
@@ -82,10 +97,24 @@ export class ConversationService {
   private buildChannelHistoryContext(currentMessage: BotMessage): string | null {
     const config = this.config ?? getBotConfig();
     const botName = config?.bot.name ?? 'Bot';
+    const CACHE_TTL_MS = 30000; // 30 seconds
 
     try {
-      // Get recent messages from database (excluding current message)
+      // Check cache first
+      const cached = this.historyCache.get(currentMessage.channel.id);
+
+      if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+        // Use cached messages, filter out current message
+        const historyMessages = cached.messages.filter((m) => m.platform_message_id !== currentMessage.id);
+        return this.formatHistoryMessages(historyMessages, botName, currentMessage);
+      }
+
+      // Fetch from database and cache
       const recentMessages = getRecentMessages(currentMessage.channel.id, HISTORY_LIMIT + 1);
+      this.historyCache.set(currentMessage.channel.id, {
+        messages: recentMessages,
+        fetchedAt: Date.now(),
+      });
 
       // Filter out the current message and reverse to chronological order
       const history = recentMessages
@@ -95,28 +124,59 @@ export class ConversationService {
 
       if (history.length === 0) return null;
 
-      // Filter messages older than 2 hours
-      const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
-      const cutoffTime = Date.now() - TWO_HOURS_MS;
-
-      const lines: string[] = [];
-
-      for (const msg of history) {
-        // Skip old messages
-        if (msg.created_at < cutoffTime) continue;
-
-        const isBot = Boolean(msg.is_bot);
-        const userName = isBot ? botName : (msg.display_name ?? msg.username ?? 'Unknown');
-
-        // Format: "- @Username: message content" or "- @BotName: response"
-        lines.push(`- @${userName}: ${msg.content}`);
-      }
-
-      return lines.length > 0 ? lines.join('\n') : null;
+      return this.formatHistoryMessages(history, botName, currentMessage);
     } catch (error) {
       console.error('[ConversationService] Channel history fetch error:', error);
       return null;
     }
+  }
+
+  /**
+   * Format history messages into text lines
+   */
+  private formatHistoryMessages(history: StoredMessage[], botName: string, currentMessage: BotMessage): string | null {
+    // Filter messages older than 2 hours
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    const cutoffTime = Date.now() - TWO_HOURS_MS;
+
+    const lines: string[] = [];
+
+    for (const msg of history) {
+      // Skip old messages
+      if (msg.created_at < cutoffTime) continue;
+
+      const isBot = Boolean(msg.is_bot);
+      const userName = isBot ? botName : (msg.display_name ?? msg.username ?? 'Unknown');
+
+      // Format: "- @Username: message content" or "- @BotName: response"
+      lines.push(`- @${userName}: ${msg.content}`);
+    }
+
+    return lines.length > 0 ? lines.join('\n') : null;
+  }
+
+  /**
+   * Build context about pending requests in this channel
+   * Informs the AI about what's already being processed
+   */
+  private buildPendingRequestsContext(message: BotMessage): string | null {
+    if (!this.requestTracker) return null;
+
+    const pending = this.requestTracker.getPendingForChannel(message.channel.id);
+    if (pending.length === 0) return null;
+
+    // Calculate elapsed time and format each pending request
+    const lines = pending.map((p) => {
+      const elapsedSeconds = Math.floor((Date.now() - p.startedAt) / 1000);
+      return `- ${p.summary} (started ${elapsedSeconds}s ago)`;
+    });
+
+    return [
+      '## Currently Processing',
+      'These requests are already being handled in this channel:',
+      ...lines,
+      'Do NOT duplicate these requests.',
+    ].join('\n');
   }
 
   /**
@@ -170,11 +230,9 @@ export class ConversationService {
     if (!message.replyToId) return null;
 
     try {
-      // First try to get from database (for regular bot messages)
-      const recentMessages = getRecentMessages(message.channel.id, 50);
-      let content: string | undefined = recentMessages.find(
-        (m) => m.platform_message_id === message.replyToId && m.is_bot,
-      )?.content;
+      // First try to get from database (direct lookup by platform message ID)
+      const repliedMessage = getMessageByPlatformId(message.platform, message.replyToId);
+      let content: string | undefined = repliedMessage?.is_bot ? repliedMessage.content : undefined;
 
       // If not in database, fetch directly from platform (for interaction replies like /imagine)
       if (!content) {
@@ -240,15 +298,27 @@ Call image_generation NOW with: the corrected prompt, style="${style || ''}", as
     context: PluginContext,
   ): Promise<string | null> {
     return new Promise((resolve) => {
+      let resolved = false;
+
+      const timeout = setTimeout(() => {
+        if (!resolved) {
+          resolved = true;
+          resolve(null);
+        }
+      }, 5000);
+
       context.eventBus.emit('message:fetch', {
         channelId,
         messageId,
         platform: platform as 'discord' | 'slack',
-        callback: resolve,
+        callback: (content: string | null) => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            resolve(content);
+          }
+        },
       });
-
-      // Timeout after 5 seconds
-      setTimeout(() => resolve(null), 5000);
     });
   }
 }

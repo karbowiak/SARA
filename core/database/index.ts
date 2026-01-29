@@ -49,6 +49,7 @@ export {
   updateMemory,
 } from './memories';
 export {
+  getMessageByPlatformId,
   getMessageCount,
   getRecentMessages,
   insertMessage,

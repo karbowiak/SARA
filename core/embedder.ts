@@ -10,30 +10,35 @@ import { fetcher } from './helpers/fetcher';
 const DEFAULT_MODEL = 'openai/text-embedding-3-large';
 const EMBEDDING_DIM = 3072;
 
-// Cache config to avoid repeated lookups
-let cachedApiKey: string | null = null;
+// Track in-flight requests to prevent duplicate API calls
+const inFlightRequests = new Map<string, Promise<Float32Array>>();
 
 /**
  * Get the OpenRouter API key
  */
 function getApiKey(): string | null {
-  if (cachedApiKey) return cachedApiKey;
   const config = getBotConfig();
-  cachedApiKey = config?.tokens?.openrouter ?? null;
-  return cachedApiKey;
+  return config?.tokens?.openrouter ?? null;
 }
 
 /**
  * Initialize the embedder (no-op for API-based embeddings)
  * Kept for backwards compatibility
  */
-export async function initEmbedder(): Promise<void> {
+export async function initEmbedder(logger?: {
+  warn: (msg: string) => void;
+  info: (msg: string) => void;
+}): Promise<void> {
   const apiKey = getApiKey();
   if (!apiKey) {
-    console.warn('OpenRouter API key not configured - embeddings will not work');
+    if (logger) {
+      logger.warn('OpenRouter API key not configured - embeddings will not work');
+    }
     return;
   }
-  console.log(`Embedder ready: ${DEFAULT_MODEL} (${EMBEDDING_DIM} dimensions)`);
+  if (logger) {
+    logger.info(`Embedder ready: ${DEFAULT_MODEL} (${EMBEDDING_DIM} dimensions)`);
+  }
 }
 
 /**
@@ -59,15 +64,43 @@ export function isEmbedderLoading(): boolean {
 }
 
 /**
- * Generate embedding for a single text
+ * Generate embedding for a single text (with deduplication)
  */
 export async function embed(text: string): Promise<Float32Array> {
+  // Normalize cache key
+  const cacheKey = text.trim();
+
+  // Check for in-flight request
+  const existing = inFlightRequests.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
+  // Create promise for this request
+  const promise = embedInternal(text);
+  inFlightRequests.set(cacheKey, promise);
+
+  try {
+    return await promise;
+  } finally {
+    // Clean up after completion (success or failure)
+    inFlightRequests.delete(cacheKey);
+  }
+}
+
+/**
+ * Internal function that performs the actual embedding API call
+ */
+async function embedInternal(text: string): Promise<Float32Array> {
   const apiKey = getApiKey();
   if (!apiKey) {
     throw new Error('OpenRouter API key not configured');
   }
 
-  const response = await fetcher('https://openrouter.ai/api/v1/embeddings', {
+  const config = getBotConfig();
+  const baseUrl = config.ai?.openRouterBaseUrl ?? 'https://openrouter.ai/api/v1';
+
+  const response = await fetcher(`${baseUrl}/embeddings`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,
@@ -111,7 +144,10 @@ export async function embedBatch(texts: string[]): Promise<Float32Array[]> {
     throw new Error('OpenRouter API key not configured');
   }
 
-  const response = await fetcher('https://openrouter.ai/api/v1/embeddings', {
+  const config = getBotConfig();
+  const baseUrl = config.ai?.openRouterBaseUrl ?? 'https://openrouter.ai/api/v1';
+
+  const response = await fetcher(`${baseUrl}/embeddings`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${apiKey}`,

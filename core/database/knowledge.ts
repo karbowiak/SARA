@@ -6,7 +6,7 @@
  */
 
 import { embed, isEmbedderReady } from '../embedder';
-import { getDb } from './client';
+import { cosineSimilarity, getDb } from './client';
 
 export interface KnowledgeEntry {
   id: number;
@@ -126,12 +126,14 @@ export function getGuildKnowledge(guildId: string, options?: { tag?: string; lim
 
 /**
  * Search knowledge semantically
+ * @param params.timeRangeMs - Optional time range in milliseconds. If provided, only returns entries created within this time range from now. Undefined = no time filter (knowledge persists indefinitely by default).
  */
 export async function searchKnowledge(params: {
   guildId: string;
   query: string;
   limit?: number;
   tag?: string;
+  timeRangeMs?: number;
 }): Promise<KnowledgeWithScore[]> {
   if (!isEmbedderReady()) {
     // Fallback to text search
@@ -142,15 +144,21 @@ export async function searchKnowledge(params: {
   const queryEmbedding = await embed(params.query);
   const limit = params.limit ?? 10;
 
-  // Get all embedded knowledge for this guild
-  const rows = db
-    .prepare<KnowledgeEntry & { tags: string }, [string]>(
-      `
+  // Build query with optional time filter
+  let query = `
     SELECT * FROM knowledge_base 
     WHERE guild_id = ? AND embedding IS NOT NULL
-  `,
-    )
-    .all(params.guildId);
+  `;
+  const queryParams: (string | number)[] = [params.guildId];
+
+  if (params.timeRangeMs !== undefined) {
+    const cutoffTime = Date.now() - params.timeRangeMs;
+    query += ` AND created_at > ?`;
+    queryParams.push(cutoffTime);
+  }
+
+  // Get all embedded knowledge for this guild (with optional time filter)
+  const rows = db.prepare<KnowledgeEntry & { tags: string }, (string | number)[]>(query).all(...queryParams);
 
   const entries = rows.map((row) => ({
     ...row,
@@ -184,26 +192,34 @@ export async function searchKnowledge(params: {
 /**
  * Search knowledge using a pre-computed embedding
  * More efficient when embedding is already available
+ * @param params.timeRangeMs - Optional time range in milliseconds. If provided, only returns entries created within this time range from now. Undefined = no time filter (knowledge persists indefinitely by default).
  */
 export function searchKnowledgeByEmbedding(params: {
   guildId: string;
   embedding: Float32Array;
   limit?: number;
   threshold?: number;
+  timeRangeMs?: number;
 }): KnowledgeWithScore[] {
   const db = getDb();
   const limit = params.limit ?? 5;
   const threshold = params.threshold ?? 0.3;
 
-  // Get all embedded knowledge for this guild
-  const rows = db
-    .prepare<KnowledgeEntry & { tags: string }, [string]>(
-      `
+  // Build query with optional time filter
+  let query = `
     SELECT * FROM knowledge_base 
     WHERE guild_id = ? AND embedding IS NOT NULL
-  `,
-    )
-    .all(params.guildId);
+  `;
+  const queryParams: (string | number)[] = [params.guildId];
+
+  if (params.timeRangeMs !== undefined) {
+    const cutoffTime = Date.now() - params.timeRangeMs;
+    query += ` AND created_at > ?`;
+    queryParams.push(cutoffTime);
+  }
+
+  // Get all embedded knowledge for this guild (with optional time filter)
+  const rows = db.prepare<KnowledgeEntry & { tags: string }, (string | number)[]>(query).all(...queryParams);
 
   const entries = rows.map((row) => ({
     ...row,
@@ -347,11 +363,18 @@ export function getKnowledgeCount(guildId: string): number {
  * Get all unique tags used in a guild's knowledge base
  */
 export function getKnowledgeTags(guildId: string): string[] {
-  const entries = getGuildKnowledge(guildId, { limit: 1000 });
-  const tagSet = new Set<string>();
+  const db = getDb();
+  const rows = db
+    .prepare<{ tags: string }, [string]>(
+      `
+    SELECT DISTINCT tags FROM knowledge_base WHERE guild_id = ?
+  `,
+    )
+    .all(guildId);
 
-  for (const entry of entries) {
-    for (const tag of entry.tags) {
+  const tagSet = new Set<string>();
+  for (const row of rows) {
+    for (const tag of JSON.parse(row.tags) as string[]) {
       tagSet.add(tag.toLowerCase());
     }
   }
@@ -392,24 +415,4 @@ export function storeKnowledgeEmbedding(id: number, embedding: Float32Array): bo
     .run(Buffer.from(embedding.buffer), now, id);
 
   return result.changes > 0;
-}
-
-/**
- * Cosine similarity between two vectors
- */
-function cosineSimilarity(a: Float32Array, b: Float32Array): number {
-  if (a.length !== b.length) return 0;
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i]! * b[i]!;
-    normA += a[i]! * a[i]!;
-    normB += b[i]! * b[i]!;
-  }
-
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  return denominator === 0 ? 0 : dotProduct / denominator;
 }

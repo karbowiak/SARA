@@ -6,6 +6,7 @@
  */
 
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
+import { z } from 'zod';
 
 // Common currency codes for the enum
 const _COMMON_CURRENCIES = [
@@ -87,8 +88,27 @@ export class CurrencyTool implements Tool {
     strict: true,
   };
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    amount: z.number().positive().finite(),
+    from: z.string().min(3).max(3).toUpperCase(),
+    to: z.string().min(3).max(3).toUpperCase(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
-    const { amount, from, to } = args as { amount: number; from: string; to: string };
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
+    const { amount, from, to } = parseResult.data;
 
     // Normalize currency codes to uppercase
     const fromCurrency = from.toUpperCase().trim();

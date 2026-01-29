@@ -231,7 +231,7 @@ export class LLMClient {
 export function createOpenRouterClient(apiKey: string, options?: Partial<LLMClientConfig>): LLMClient {
   return new LLMClient({
     apiKey,
-    baseUrl: 'https://openrouter.ai/api/v1',
+    baseUrl: options?.baseUrl ?? 'https://openrouter.ai/api/v1',
     defaultModel: 'anthropic/claude-3.5-sonnet',
     headers: {
       'HTTP-Referer': 'https://github.com/your-bot', // Required by OpenRouter

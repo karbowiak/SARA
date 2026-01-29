@@ -114,8 +114,11 @@ export async function loadPlugins(options: PluginLoaderOptions): Promise<LoadedP
           }
 
           logger.info(`Loaded plugin: ${instance.id} (${instance.type})`);
-        } catch {
+        } catch (error) {
           // Not a valid plugin class, skip
+          logger.debug(`Skipping export in ${file} - not a valid plugin`, {
+            error: error instanceof Error ? error.message : String(error),
+          });
         }
       }
     } catch (error) {

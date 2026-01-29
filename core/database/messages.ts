@@ -67,6 +67,8 @@ export interface SearchOptions {
   decayFactor?: number;
   /** Include bot messages (default: false) */
   includeBot?: boolean;
+  /** Only search messages within this time range in milliseconds (default: 30 days = 2592000000ms) */
+  timeRangeMs?: number;
 }
 
 /**
@@ -147,10 +149,22 @@ export function updateMessageEmbedding(id: number, embedding: number[] | Float32
 
 /**
  * Search for similar messages using cosine similarity
+ *
+ * @param options - Search options including embedding, filters, and time range
+ * @param options.timeRangeMs - Only search messages within this time range (default: 30 days)
+ * @returns Array of similar messages sorted by score (similarity * time decay)
  */
 export function searchSimilar(options: SearchOptions): SimilarMessage[] {
   const db = getDb();
-  const { embedding, channelId, guildId, limit = 10, decayFactor = 0.98, includeBot = false } = options;
+  const {
+    embedding,
+    channelId,
+    guildId,
+    limit = 10,
+    decayFactor = 0.98,
+    includeBot = false,
+    timeRangeMs = 2592000000, // 30 days default
+  } = options;
 
   // Build query with optional filters - join with users for name/bot info
   let query = `
@@ -173,6 +187,13 @@ export function searchSimilar(options: SearchOptions): SimilarMessage[] {
   if (guildId) {
     query += ' AND m.guild_id = ?';
     params.push(guildId);
+  }
+
+  // Add time range filter
+  if (timeRangeMs > 0) {
+    const cutoffTime = Date.now() - timeRangeMs;
+    query += ' AND m.created_at > ?';
+    params.push(cutoffTime);
   }
 
   const rows = db.prepare(query).all(...params) as StoredMessage[];
@@ -253,4 +274,23 @@ export function messageExists(platform: string, platformMessageId: string): bool
       .prepare('SELECT 1 FROM messages WHERE platform = ? AND platform_message_id = ? LIMIT 1')
       .get(platform, platformMessageId) != null
   );
+}
+
+/**
+ * Get a specific message by platform and platform message ID
+ *
+ * @param platform - The platform (e.g., 'discord')
+ * @param platformMessageId - The platform-specific message ID
+ * @returns The stored message with user info, or null if not found
+ */
+export function getMessageByPlatformId(platform: string, platformMessageId: string): StoredMessage | null {
+  const db = getDb();
+  return db
+    .prepare<StoredMessage, [string, string]>(`
+    SELECT m.*, u.username, u.display_name, u.is_bot 
+    FROM messages m
+    JOIN users u ON m.user_id = u.id
+    WHERE m.platform = ? AND m.platform_message_id = ?
+  `)
+    .get(platform, platformMessageId) as StoredMessage | null;
 }

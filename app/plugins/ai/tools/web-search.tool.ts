@@ -7,6 +7,7 @@
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getBotConfig } from '@core';
 import { fetcher } from '@core/helpers/fetcher';
+import { z } from 'zod';
 
 export class WebSearchTool implements Tool {
   readonly metadata: ToolMetadata = {
@@ -77,7 +78,25 @@ export class WebSearchTool implements Tool {
     return !!this.apiKey;
   }
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    query: z.string().min(1).max(1000),
+    max_results: z.number().int().min(1).max(10).optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
     if (!this.apiKey) {
       return {
         success: false,
@@ -88,7 +107,7 @@ export class WebSearchTool implements Tool {
       };
     }
 
-    const params = args as { query: string; max_results?: number };
+    const params = parseResult.data;
     const maxResults = Math.min(Math.max(params.max_results ?? 5, 1), 10);
 
     context.logger.info('WebSearchTool executing', { query: params.query, maxResults });

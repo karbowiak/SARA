@@ -7,6 +7,7 @@
 
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getKnowledge, getKnowledgeTags, searchKnowledge } from '@core/database';
+import { z } from 'zod';
 
 export class KnowledgeSearchTool implements Tool {
   readonly metadata: ToolMetadata = {
@@ -49,13 +50,28 @@ export class KnowledgeSearchTool implements Tool {
     strict: true,
   };
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    query: z.string().min(1).max(1000).optional(),
+    tag: z.string().max(100).optional(),
+    id: z.number().int().positive().optional(),
+    list_tags: z.boolean().optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
-    const params = args as {
-      query?: string;
-      tag?: string;
-      id?: number;
-      list_tags?: boolean;
-    };
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
+    const params = parseResult.data;
 
     const guildId = context.message.guildId;
     if (!guildId) {

@@ -56,7 +56,7 @@ export class ImmichAutoPlugin implements MessageHandlerPlugin {
       this.channelConfigs.set(key, channelConfig);
     }
 
-    this.immichClient = new ImmichClient();
+    this.immichClient = new ImmichClient(context.logger);
     this.enabled = true;
     context.logger.info(`[Immich Auto] Monitoring ${this.channelConfigs.size} channel(s)`);
   }
@@ -183,14 +183,14 @@ export class ImmichAutoPlugin implements MessageHandlerPlugin {
       const result = await this.immichClient!.uploadAsset(tempPath, timestamp, undefined, visibility);
 
       if (!result) {
-        console.log(`[Immich Auto] Failed: ${item.filename} - upload returned null`);
+        this.context?.logger.info(`[Immich Auto] Failed: ${item.filename} - upload returned null`);
         return;
       }
 
       if (result.status === 'duplicate') {
-        console.log(`[Immich Auto] Duplicate: ${item.filename}`);
+        this.context?.logger.debug(`[Immich Auto] Duplicate: ${item.filename}`);
       } else if (result.status === 'created') {
-        console.log(`[Immich Auto] Uploaded: ${item.filename} -> ${album}`);
+        this.context?.logger.info(`[Immich Auto] Uploaded: ${item.filename} -> ${album}`);
 
         // Add to album
         const albumId = await this.immichClient!.ensureAlbum(album);
@@ -202,9 +202,9 @@ export class ImmichAutoPlugin implements MessageHandlerPlugin {
       const errorMessage = error instanceof Error ? error.message : String(error);
       // Check for duplicate error from Immich
       if (errorMessage.includes('duplicate')) {
-        console.log(`[Immich Auto] Duplicate: ${item.filename}`);
+        this.context?.logger.debug(`[Immich Auto] Duplicate: ${item.filename}`);
       } else {
-        console.log(`[Immich Auto] Failed: ${item.filename} - ${errorMessage}`);
+        this.context?.logger.info(`[Immich Auto] Failed: ${item.filename} - ${errorMessage}`);
       }
     } finally {
       // Cleanup temp file

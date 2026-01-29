@@ -63,6 +63,7 @@ export class DiscordAdapter {
   private userGuilds: Map<string, Set<string>> = new Map();
   private userNameIndex: Map<string, { username?: string; globalName?: string }> = new Map();
   private userRefreshTimer?: NodeJS.Timeout;
+  private statsInterval?: NodeJS.Timeout;
 
   constructor(options: DiscordAdapterOptions) {
     this.eventBus = options.eventBus;
@@ -102,6 +103,10 @@ export class DiscordAdapter {
     if (this.userRefreshTimer) {
       clearInterval(this.userRefreshTimer);
       this.userRefreshTimer = undefined;
+    }
+    if (this.statsInterval) {
+      clearInterval(this.statsInterval);
+      this.statsInterval = undefined;
     }
     this.client.destroy();
   }
@@ -762,7 +767,7 @@ export class DiscordAdapter {
     }, twelveHoursMs);
 
     // Log cache stats periodically (every 5 minutes)
-    setInterval(
+    this.statsInterval = setInterval(
       () => {
         const stats = {
           totalUsers: this.userGuilds.size,
@@ -800,7 +805,7 @@ export class DiscordAdapter {
       ? message.mentions.users.has(botId) || message.content.includes(`<@${botId}>`)
       : false;
     // Check if this is a reply to the bot's message
-    const isReplyToBot = message.reference?.messageId && message.mentions.repliedUser?.id === botId;
+    const isReplyToBot = Boolean(message.reference?.messageId && message.mentions.repliedUser?.id === botId);
     const mentionedBot = isDM || isDirectMention || isReplyToBot;
 
     // Get author's role IDs from guild member
@@ -903,7 +908,7 @@ export class DiscordAdapter {
     const white = '\x1b[37m';
 
     // Format: [HH:MM:SS] Guild/#channel │ BotName [BOT]: message
-    console.log(
+    this.logger.info(
       `${dim}[${timestamp}]${reset} ` +
         `${yellow}${guild}${reset}${dim}/${reset}${blue}#${channelName}${reset} ` +
         `${dim}│${reset} ${magenta}${botName}${reset} ${magenta}[BOT]${reset}` +
@@ -932,7 +937,7 @@ export class DiscordAdapter {
     const white = '\x1b[37m';
 
     // Format: [HH:MM:SS] DM → @username │ BotName [BOT]: message
-    console.log(
+    this.logger.info(
       `${dim}[${timestamp}]${reset} ` +
         `${magenta}DM${reset} ${dim}→${reset} ${cyan}@${username}${reset} ` +
         `${dim}│${reset} ${magenta}${botName}${reset} ${magenta}[BOT]${reset}` +

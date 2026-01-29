@@ -275,17 +275,26 @@ ${lines.join('\n')}`;
 
 /**
  * Format timestamp as human-readable age
+ * @param timestamp - Unix timestamp in milliseconds
+ * @param short - Use short format (3d ago) vs long format (3 days ago)
  */
-function formatAge(timestamp: number): string {
+function formatAge(timestamp: number, short = true): string {
   const age = Date.now() - timestamp;
   const minutes = Math.floor(age / 60000);
   const hours = Math.floor(age / 3600000);
   const days = Math.floor(age / 86400000);
 
-  if (days > 0) return `${days}d ago`;
-  if (hours > 0) return `${hours}h ago`;
-  if (minutes > 0) return `${minutes}m ago`;
-  return 'just now';
+  if (short) {
+    if (days > 0) return `${days}d ago`;
+    if (hours > 0) return `${hours}h ago`;
+    if (minutes > 0) return `${minutes}m ago`;
+    return 'just now';
+  } else {
+    if (days > 0) return `${days} day${days > 1 ? 's' : ''} ago`;
+    if (hours > 0) return `${hours} hour${hours > 1 ? 's' : ''} ago`;
+    if (minutes > 0) return `${minutes} minute${minutes > 1 ? 's' : ''} ago`;
+    return 'just now';
+  }
 }
 
 // Re-export the formatting functions for use elsewhere

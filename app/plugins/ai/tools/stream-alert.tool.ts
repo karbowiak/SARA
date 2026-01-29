@@ -4,6 +4,7 @@
 
 import { addSubscription, getSubscriptions, removeSubscription } from '@core/database/streams';
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core/types/tool';
+import { z } from 'zod';
 
 export class StreamAlertTool implements Tool {
   readonly metadata: ToolMetadata = {
@@ -46,12 +47,27 @@ export class StreamAlertTool implements Tool {
     return true;
   }
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    action: z.enum(['add', 'remove', 'list']),
+    platform: z.enum(['twitch', 'kick', 'chaturbate', 'mfc']).optional(),
+    channel: z.string().min(1).max(100).optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
-    const params = args as {
-      action: 'add' | 'remove' | 'list';
-      platform?: string;
-      channel?: string;
-    };
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
+    const params = parseResult.data;
 
     const guildId = context.channel.guildId || 'dm';
 

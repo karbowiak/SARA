@@ -9,6 +9,7 @@ import { generateImage } from '@app/helpers/image';
 import type { AspectRatio, ImageResolution } from '@app/helpers/image/types';
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getBotConfig } from '@core';
+import { z } from 'zod';
 
 interface ImageGenerationArgs {
   prompt: string;
@@ -219,7 +220,29 @@ ${modelDescriptions}`,
     }
   }
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    prompt: z.string().min(1).max(2000),
+    style: z.string().max(500).optional(),
+    reference_image_url: z.string().url().optional(),
+    model: z.string().optional(),
+    aspect_ratio: z.enum(['1:1', '2:3', '3:2', '3:4', '4:3', '4:5', '5:4', '9:16', '16:9', '21:9']).optional(),
+    resolution: z.enum(['1K', '2K', '4K']).optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
     const config = getBotConfig();
     const apiKey = config?.tokens?.openrouter;
     const imageModels = config?.ai?.imageModels ?? [];
@@ -245,7 +268,7 @@ ${modelDescriptions}`,
     }
 
     try {
-      const params = args as ImageGenerationArgs;
+      const params = parseResult.data;
       const userChosenModel = params.model;
       const firstModel = imageModels[0];
       if (!firstModel) {

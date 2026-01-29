@@ -22,6 +22,7 @@ import {
 import path from 'path';
 import { ConversationService } from './services/conversation';
 import { ImageProcessor } from './services/image-processor';
+import { RequestTracker } from './services/request-tracker';
 import { ResponseHandler } from './services/response-handler';
 
 /** Fallback model if not configured */
@@ -42,6 +43,7 @@ export class AIPlugin implements MessageHandlerPlugin {
   private conversationService!: ConversationService;
   private responseHandler!: ResponseHandler;
   private imageProcessor!: ImageProcessor;
+  private requestTracker?: RequestTracker;
 
   async load(context: PluginContext): Promise<void> {
     this.context = context;
@@ -52,7 +54,11 @@ export class AIPlugin implements MessageHandlerPlugin {
 
     // Initialize services
     this.imageProcessor = new ImageProcessor();
-    this.conversationService = new ConversationService(this.config, this.imageProcessor);
+
+    // Initialize request tracker for duplicate detection
+    this.requestTracker = new RequestTracker(context.logger);
+
+    this.conversationService = new ConversationService(this.config, this.imageProcessor, this.requestTracker);
 
     // Initialize LLM client with API key from config
     const apiKey = this.config.tokens.openrouter;
@@ -62,6 +68,7 @@ export class AIPlugin implements MessageHandlerPlugin {
     }
 
     this.llm = createOpenRouterClient(apiKey, {
+      baseUrl: this.config.ai?.openRouterBaseUrl,
       defaultModel: this.model,
       defaultTemperature: this.config.ai?.temperature,
       defaultMaxTokens: this.config.ai?.maxTokens,
@@ -72,7 +79,7 @@ export class AIPlugin implements MessageHandlerPlugin {
       },
     });
 
-    this.responseHandler = new ResponseHandler(this.config, this.llm);
+    this.responseHandler = new ResponseHandler(this.config, this.llm, this.requestTracker);
 
     // Load tools from the tools directory (filtered by config)
     const toolsDir = path.join(import.meta.dir, 'tools');
@@ -95,6 +102,11 @@ export class AIPlugin implements MessageHandlerPlugin {
     this.loadedTools = { all: [], accessConfig: new Map() };
     this.llm = undefined;
     this.config = undefined;
+
+    if (this.requestTracker) {
+      this.requestTracker.destroy();
+      this.requestTracker = undefined;
+    }
   }
 
   shouldHandle(message: BotMessage): boolean {
@@ -296,105 +308,6 @@ export class AIPlugin implements MessageHandlerPlugin {
 
     // Filter tools by access
     return getAccessibleTools(this.loadedTools.all, accessContext, config);
-  }
-
-  /**
-  ): Promise<string | null> {
-    if (!this.context) return Promise.resolve(null);
-
-    return new Promise((resolve) => {
-      this.context?.eventBus.emit('user:resolve', {
-        platform,
-        name,
-        guildId,
-        callback: resolve,
-      });
-
-      setTimeout(() => resolve(null), 1500);
-    });
-  }
-
-  /**
-   * Inject reference image URL into image_generation args when the user likely wants edits
-   */
-  private injectReferenceImageIfNeeded(args: Record<string, unknown>, message: BotMessage): Record<string, unknown> {
-    const hasReference = typeof args.reference_image_url === 'string' && args.reference_image_url.length > 0;
-    const images = this.imageProcessor.getImageAttachments(message);
-    const shouldUse = this.shouldUseReferenceImage(message);
-    if (!hasReference && (images.length === 0 || !shouldUse)) return args;
-
-    const updated: Record<string, unknown> = {
-      ...args,
-      reference_image_url: hasReference ? args.reference_image_url : images[0]?.url,
-    };
-
-    // Preserve reference sizing unless the user explicitly asked for a ratio/resolution
-    if (!this.userSpecifiedAspectRatio(message.content)) {
-      delete updated.aspect_ratio;
-    }
-    if (!this.userSpecifiedResolution(message.content)) {
-      delete updated.resolution;
-    }
-
-    return updated;
-  }
-
-  /**
-   * Heuristic: decide if the user is asking to edit/transform the attached image
-   */
-  private shouldUseReferenceImage(message: BotMessage): boolean {
-    if (this.imageProcessor.getImageAttachments(message).length === 0) return false;
-
-    const text = message.content.toLowerCase();
-    if (!text) return true;
-
-    const triggers = [
-      'use this',
-      'use the image',
-      'use this image',
-      'based on this',
-      'based on the',
-      'reference',
-      'edit',
-      'modify',
-      'change',
-      'remove',
-      'add',
-      'replace',
-      'swap',
-      'turn into',
-      'transform',
-      'restyle',
-      'style',
-      'color',
-      'colorize',
-      'enhance',
-      'upscale',
-      'background',
-      'make it',
-      'make this',
-      'fix',
-      'clean up',
-      'retouch',
-      'mask',
-      'inpaint',
-    ];
-
-    return triggers.some((t) => text.includes(t));
-  }
-
-  private userSpecifiedAspectRatio(text: string): boolean {
-    const ratioPattern = /\b(1:1|2:3|3:2|3:4|4:3|4:5|5:4|9:16|16:9|21:9)\b/i;
-    if (ratioPattern.test(text)) return true;
-
-    const wordPattern =
-      /\b(square|portrait|landscape|widescreen|ultrawide|vertical|horizontal|instagram|stories|phone)\b/i;
-    return wordPattern.test(text);
-  }
-
-  private userSpecifiedResolution(text: string): boolean {
-    const pattern = /\b(1k|2k|4k|1024|2048|4096)\b/i;
-    return pattern.test(text);
   }
 
   /**

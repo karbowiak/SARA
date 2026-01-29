@@ -28,8 +28,20 @@ export class ImmichClient {
   private albumCache: Map<string, string> = new Map();
   private initialized = false;
   private config: ImmichConfig | null = null;
+  private logger?: {
+    warn: (msg: string) => void;
+    info: (msg: string) => void;
+    debug: (msg: string) => void;
+    error: (msg: string, meta?: any) => void;
+  };
 
-  constructor() {
+  constructor(logger?: {
+    warn: (msg: string) => void;
+    info: (msg: string) => void;
+    debug: (msg: string) => void;
+    error: (msg: string, meta?: any) => void;
+  }) {
+    this.logger = logger;
     this.initialize();
   }
 
@@ -38,7 +50,9 @@ export class ImmichClient {
 
     const config = getBotConfig();
     if (!config?.immich?.enabled) {
-      console.warn('[Immich] Immich not enabled in config');
+      if (this.logger) {
+        this.logger.warn('[Immich] Immich not enabled in config');
+      }
       this.initialized = true;
       return;
     }
@@ -56,7 +70,9 @@ export class ImmichClient {
     });
 
     this.initialized = true;
-    console.log('[Immich] Initialized');
+    if (this.logger) {
+      this.logger.info('[Immich] Initialized');
+    }
   }
 
   isReady(): boolean {
@@ -113,7 +129,9 @@ export class ImmichClient {
     visibility?: 'archive' | 'timeline',
   ): Promise<UploadResult | null> {
     if (!this.isReady()) {
-      console.error('[Immich] Not ready, cannot upload');
+      if (this.logger) {
+        this.logger.error('[Immich] Not ready, cannot upload');
+      }
       return null;
     }
 
@@ -131,7 +149,11 @@ export class ImmichClient {
       const file = new File([fileContent], filename);
 
       // Debug logging for filename transformation
-      console.log(`[Immich] Uploading: ${originalFilename} -> ${filename} [${(stats.size / 1024).toFixed(2)} KB]`);
+      if (this.logger) {
+        this.logger.debug(
+          `[Immich] Uploading: ${originalFilename} -> ${filename} [${(stats.size / 1024).toFixed(2)} KB]`,
+        );
+      }
 
       const response = await uploadAsset({
         assetMediaCreateDto: {
@@ -157,7 +179,9 @@ export class ImmichClient {
         status: response.status as 'created' | 'duplicate',
       };
     } catch (error) {
-      console.error(`[Immich] Failed to upload asset ${basename(filePath)}:`, error);
+      if (this.logger) {
+        this.logger.error(`[Immich] Failed to upload asset ${basename(filePath)}:`, { error });
+      }
       return null;
     }
   }
@@ -181,7 +205,9 @@ export class ImmichClient {
 
       return true;
     } catch (error) {
-      console.error(`[Immich] Failed to update asset ${assetId}:`, error);
+      if (this.logger) {
+        this.logger.error(`[Immich] Failed to update asset ${assetId}:`, { error });
+      }
       return false;
     }
   }
@@ -220,7 +246,9 @@ export class ImmichClient {
       this.albumCache.set(albumName, newAlbum.id);
       return newAlbum.id;
     } catch (error) {
-      console.error(`[Immich] Failed to ensure album ${albumName}:`, error);
+      if (this.logger) {
+        this.logger.error(`[Immich] Failed to ensure album ${albumName}:`, { error });
+      }
       return null;
     }
   }
@@ -235,10 +263,14 @@ export class ImmichClient {
           description,
         },
       });
-      console.log(`[Immich] Updated description for album ${albumId}`);
+      if (this.logger) {
+        this.logger.info(`[Immich] Updated description for album ${albumId}`);
+      }
       return true;
     } catch (error) {
-      console.error(`[Immich] Failed to update album description for ${albumId}:`, error);
+      if (this.logger) {
+        this.logger.error(`[Immich] Failed to update album description for ${albumId}:`, { error });
+      }
       return false;
     }
   }
@@ -254,7 +286,9 @@ export class ImmichClient {
         },
       });
     } catch (error) {
-      console.error(`[Immich] Failed to add asset ${assetId} to album ${albumId}:`, error);
+      if (this.logger) {
+        this.logger.error(`[Immich] Failed to add asset ${assetId} to album ${albumId}:`, { error });
+      }
     }
   }
 }

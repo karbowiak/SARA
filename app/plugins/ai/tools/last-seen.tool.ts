@@ -7,6 +7,7 @@
 
 import type { Tool, ToolExecutionContext, ToolMetadata, ToolResult, ToolSchema } from '@core';
 import { getRecentUsers, getUserByPlatformId, type StoredUser, searchUsers } from '@core/database';
+import { z } from 'zod';
 
 export class LastSeenTool implements Tool {
   readonly metadata: ToolMetadata = {
@@ -51,12 +52,27 @@ Returns timestamps for last seen and last message, plus message count.`,
     strict: true,
   };
 
+  // Zod schema for input validation
+  private readonly argsSchema = z.object({
+    action: z.enum(['lookup', 'search', 'recent']),
+    query: z.string().max(500).optional(),
+    limit: z.number().int().min(1).max(20).optional(),
+  });
+
   async execute(args: unknown, context: ToolExecutionContext): Promise<ToolResult> {
-    const params = args as {
-      action: 'lookup' | 'search' | 'recent';
-      query?: string;
-      limit?: number;
-    };
+    // Validate input
+    const parseResult = this.argsSchema.safeParse(args);
+    if (!parseResult.success) {
+      return {
+        success: false,
+        error: {
+          type: 'validation_error',
+          message: `Invalid parameters: ${parseResult.error.message}`,
+        },
+      };
+    }
+
+    const params = parseResult.data;
 
     const limit = Math.min(Math.max(params.limit || 5, 1), 20);
 

@@ -3,7 +3,7 @@
  */
 
 import { embed, isEmbedderReady } from '../embedder';
-import { getDb } from './client';
+import { cosineSimilarity, getDb } from './client';
 
 export type MemoryType = 'preference' | 'fact' | 'instruction' | 'context';
 export type MemorySource = 'explicit' | 'inferred';
@@ -193,12 +193,18 @@ export function getMemoriesByType(userId: number, guildId: string, type: MemoryT
 
 /**
  * Search memories semantically
+ * @param params.userId - User ID to search memories for
+ * @param params.guildId - Guild ID to search memories in
+ * @param params.query - Search query text
+ * @param params.limit - Maximum number of results (default: 5)
+ * @param params.timeRangeMs - Optional time range in milliseconds to filter memories (e.g., 86400000 for last 24h). Undefined = no time filter (searches all memories)
  */
 export async function searchMemories(params: {
   userId: number;
   guildId: string;
   query: string;
   limit?: number;
+  timeRangeMs?: number;
 }): Promise<SimilarMemory[]> {
   if (!isEmbedderReady()) return [];
 
@@ -206,12 +212,20 @@ export async function searchMemories(params: {
   const queryEmbedding = await embed(params.query);
   const limit = params.limit ?? 5;
 
-  const memories = db
-    .prepare<StoredMemory, [number, string]>(`
+  // Build query with optional time range filter
+  let query = `
     SELECT * FROM memories 
     WHERE user_id = ? AND guild_id = ? AND embedding IS NOT NULL
-  `)
-    .all(params.userId, params.guildId);
+  `;
+  const queryParams: (number | string)[] = [params.userId, params.guildId];
+
+  if (params.timeRangeMs !== undefined) {
+    const cutoffTime = Date.now() - params.timeRangeMs;
+    query += ` AND created_at > ?`;
+    queryParams.push(cutoffTime);
+  }
+
+  const memories = db.prepare<StoredMemory, (number | string)[]>(query).all(...queryParams);
 
   const scored: SimilarMemory[] = [];
 
@@ -318,23 +332,18 @@ export function clearMemories(userId: number, guildId: string): number {
 export function getMemoryCount(userId: number, guildId: string): { explicit: number; inferred: number } {
   const db = getDb();
 
-  const explicit =
-    db
-      .prepare<{ count: number }, [number, string]>(`
-    SELECT COUNT(*) as count FROM memories 
-    WHERE user_id = ? AND guild_id = ? AND source = 'explicit'
-  `)
-      .get(userId, guildId)?.count ?? 0;
+  const result = db
+    .prepare<{ explicit: number; inferred: number }, [number, string]>(
+      `
+    SELECT 
+      SUM(CASE WHEN source = 'explicit' THEN 1 ELSE 0 END) as explicit,
+      SUM(CASE WHEN source = 'inferred' THEN 1 ELSE 0 END) as inferred
+    FROM memories WHERE user_id = ? AND guild_id = ?
+  `,
+    )
+    .get(userId, guildId);
 
-  const inferred =
-    db
-      .prepare<{ count: number }, [number, string]>(`
-    SELECT COUNT(*) as count FROM memories 
-    WHERE user_id = ? AND guild_id = ? AND source = 'inferred'
-  `)
-      .get(userId, guildId)?.count ?? 0;
-
-  return { explicit, inferred };
+  return result || { explicit: 0, inferred: 0 };
 }
 
 /**
@@ -377,24 +386,4 @@ export function formatMemoriesForPrompt(memories: StoredMemory[], userName: stri
   }
 
   return lines.join('\n');
-}
-
-/**
- * Cosine similarity between two vectors
- */
-function cosineSimilarity(a: Float32Array, b: Float32Array): number {
-  if (a.length !== b.length) return 0;
-
-  let dotProduct = 0;
-  let normA = 0;
-  let normB = 0;
-
-  for (let i = 0; i < a.length; i++) {
-    dotProduct += a[i]! * b[i]!;
-    normA += a[i]! * a[i]!;
-    normB += b[i]! * b[i]!;
-  }
-
-  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
-  return denominator === 0 ? 0 : dotProduct / denominator;
 }

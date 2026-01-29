@@ -138,10 +138,12 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
 
     // Debug: log the request body to verify parameters
     if (isDebugMode()) {
-      console.log('[ImageClient] Request body:', JSON.stringify(requestBody, null, 2));
+      // Use console for CLI debug output (not production logging)
+      console.debug('[ImageClient] Request body:', JSON.stringify(requestBody, null, 2));
     }
 
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const baseUrl = config.ai?.openRouterBaseUrl ?? 'https://openrouter.ai/api/v1';
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -263,7 +265,8 @@ export async function generateImage(request: ImageGenerationRequest): Promise<Im
     if (isDebugMode()) {
       const dims = await getImageDimensions(imageBuffer);
       if (dims) {
-        console.log(`[ImageClient] Actual image dimensions: ${dims.width}x${dims.height}`);
+        // Use console for CLI debug output (not production logging)
+        console.debug(`[ImageClient] Actual image dimensions: ${dims.width}x${dims.height}`);
       }
     }
 
@@ -301,9 +304,10 @@ export async function createPromptVariation(originalPrompt: string): Promise<str
   }
 
   const model = config?.ai?.defaultModel ?? 'anthropic/claude-sonnet-4-20250514';
+  const baseUrl = config?.ai?.openRouterBaseUrl ?? 'https://openrouter.ai/api/v1';
 
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,

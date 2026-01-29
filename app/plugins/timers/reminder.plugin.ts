@@ -45,11 +45,21 @@ export class ReminderTimerPlugin implements TimerHandlerPlugin {
   private context?: PluginContext;
   private logger?: Logger;
   private eventBus?: EventBus;
+  private llm?: LLMClient;
 
   async load(context: PluginContext): Promise<void> {
     this.context = context;
     this.logger = context.logger;
     this.eventBus = context.eventBus;
+
+    // Initialize LLMClient once for AI commentary
+    const config = getBotConfig();
+    this.llm = new LLMClient({
+      apiKey: config.tokens.openrouter,
+      defaultModel: config.ai?.defaultModel,
+      defaultTemperature: 0.8,
+      defaultMaxTokens: 150,
+    });
 
     // Listen for snooze button interactions
     context.eventBus.on('interaction:button', this.handleSnoozeButton.bind(this));
@@ -62,6 +72,7 @@ export class ReminderTimerPlugin implements TimerHandlerPlugin {
     this.context = undefined;
     this.logger = undefined;
     this.eventBus = undefined;
+    this.llm = undefined;
   }
 
   async tick(context: PluginContext): Promise<void> {
@@ -138,20 +149,16 @@ export class ReminderTimerPlugin implements TimerHandlerPlugin {
     username: string,
     context: PluginContext,
   ): Promise<string | null> {
+    // Check if LLM client is available
+    if (!this.llm) return null;
+
     try {
       const config = getBotConfig();
-      const llm = new LLMClient({
-        apiKey: config.tokens.openrouter,
-        defaultModel: config.ai?.defaultModel,
-        defaultTemperature: 0.8,
-        defaultMaxTokens: 150,
-      });
-
       const botName = config.bot.identity ?? config.bot.name;
       const timeSinceSet = Math.floor(Date.now() / 1000) - reminder.created_at;
       const timeDescription = this.formatDuration(timeSinceSet);
 
-      const response = await llm.chat({
+      const response = await this.llm.chat({
         messages: [
           {
             role: 'system',

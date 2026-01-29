@@ -8,11 +8,15 @@ import type {
   ToolCall,
   ToolExecutionContext,
 } from '@core';
+import type { RequestTracker } from './request-tracker';
 
 export class ResponseHandler {
+  private static readonly MAX_TOOL_DEPTH = 5;
+
   constructor(
     _config: BotConfig | undefined,
     private llm: LLMClient | undefined,
+    private requestTracker: RequestTracker | undefined,
   ) {}
 
   /**
@@ -24,8 +28,18 @@ export class ResponseHandler {
     messages: ChatMessage[],
     accessibleTools: Tool[],
     context: PluginContext,
+    depth: number = 0,
   ): Promise<{ toolsUsed: string[]; content: string | null }> {
     if (!this.llm) return { toolsUsed: [], content: null };
+
+    // Check depth limit to prevent infinite recursion
+    if (depth >= ResponseHandler.MAX_TOOL_DEPTH) {
+      context.logger.warn('Max tool call depth reached', { depth, messageId: message.id });
+      return {
+        toolsUsed: [],
+        content: '⚠️ I had to stop processing because I was making too many tool calls. Please try a simpler request.',
+      };
+    }
 
     const toolsUsed: string[] = [];
 
@@ -63,6 +77,32 @@ export class ResponseHandler {
           args = this.injectReferenceImageIfNeeded(args, message);
         }
 
+        // Check for duplicate in-flight requests (image_generation only)
+        if (toolName === 'image_generation' && this.requestTracker) {
+          const similar = await this.requestTracker.findSimilar(message.channel.id, toolName, args);
+
+          if (similar) {
+            // Skip execution - return "already in progress" message
+            const truncatedSummary =
+              similar.summary.length > 50 ? `${similar.summary.slice(0, 47)}...` : similar.summary;
+            context.logger.info('[ResponseHandler] Skipping duplicate image generation', {
+              messageId: message.id,
+              similar: truncatedSummary,
+            });
+
+            return {
+              toolCall,
+              toolName,
+              success: true,
+              durationMs: 0,
+              content: JSON.stringify({
+                success: true,
+                message: `A similar image is already being generated: "${truncatedSummary}". Please wait for it to complete.`,
+              }),
+            };
+          }
+        }
+
         context.eventBus.fire('ai:tool_call', {
           messageId: message.id,
           toolName,
@@ -90,6 +130,17 @@ export class ResponseHandler {
             durationMs: 0,
             content: JSON.stringify({ error: `Tool ${toolName} not found` }),
           };
+        }
+
+        // Track pending request
+        let requestId: string | undefined;
+        if (toolName === 'image_generation' && this.requestTracker) {
+          requestId = await this.requestTracker.addPending(message.channel.id, toolName, args, message.id);
+          context.logger.debug('[ResponseHandler] Tracking pending request', {
+            messageId: message.id,
+            requestId,
+            toolName,
+          });
         }
 
         // Execute tool with error isolation
@@ -168,6 +219,16 @@ export class ResponseHandler {
             durationMs,
             content: JSON.stringify({ error: errorMessage }),
           };
+        } finally {
+          // Remove from pending (always cleanup, even on error)
+          if (requestId && this.requestTracker) {
+            this.requestTracker.removePending(message.channel.id, requestId);
+            context.logger.debug('[ResponseHandler] Removed pending request', {
+              messageId: message.id,
+              requestId,
+              toolName,
+            });
+          }
         }
       }),
     );
@@ -234,9 +295,10 @@ export class ResponseHandler {
       context.logger.info('LLM returned more tool calls - recursively handling', {
         messageId: message.id,
         newToolCount: newToolCalls.length,
+        currentDepth: depth,
       });
 
-      const result = await this.handleToolCalls(message, newToolCalls, messages, accessibleTools, context);
+      const result = await this.handleToolCalls(message, newToolCalls, messages, accessibleTools, context, depth + 1);
       toolsUsed.push(...result.toolsUsed);
       return { toolsUsed, content: result.content };
     }

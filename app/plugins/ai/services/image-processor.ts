@@ -37,27 +37,39 @@ If the user asks to edit/transform/use these images as a reference, call image_g
    * Convert images to base64 PNGs for the model
    */
   async buildImageParts(images: BotMessage['attachments']): Promise<ContentPart[]> {
-    const parts: ContentPart[] = [];
+    const results = await Promise.all(
+      images.map(async (img) => {
+        const url = getPreferredUrl(img);
 
-    for (const img of images) {
-      const url = getPreferredUrl(img);
-      try {
-        const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-        if (!response.ok) {
-          parts.push({ type: 'image_url', image_url: { url } });
-          continue;
+        try {
+          const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+
+          if (!response.ok) {
+            // Return URL directly if fetch fails
+            return {
+              type: 'image_url' as const,
+              image_url: { url },
+            };
+          }
+
+          const buffer = Buffer.from(await response.arrayBuffer());
+          const pngBuffer = await convertToPng(buffer);
+          const base64 = pngBuffer.toString('base64');
+
+          return {
+            type: 'image_url' as const,
+            image_url: { url: `data:image/png;base64,${base64}` },
+          };
+        } catch {
+          // Fallback to original URL on error
+          return {
+            type: 'image_url' as const,
+            image_url: { url },
+          };
         }
+      }),
+    );
 
-        const buffer = Buffer.from(await response.arrayBuffer());
-        const pngBuffer = await convertToPng(buffer);
-        const base64 = pngBuffer.toString('base64');
-        parts.push({ type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } });
-      } catch {
-        // Fallback to URL if conversion fails
-        parts.push({ type: 'image_url', image_url: { url } });
-      }
-    }
-
-    return parts;
+    return results;
   }
 }

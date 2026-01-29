@@ -42,10 +42,9 @@ export class ImmichClient {
     error: (msg: string, meta?: any) => void;
   }) {
     this.logger = logger;
-    this.initialize();
   }
 
-  private initialize() {
+  private ensureInitialized() {
     if (this.initialized) return;
 
     const config = getBotConfig();
@@ -76,6 +75,7 @@ export class ImmichClient {
   }
 
   isReady(): boolean {
+    this.ensureInitialized();
     return this.initialized && this.config !== null;
   }
 
@@ -292,5 +292,3 @@ export class ImmichClient {
     }
   }
 }
-
-export const immichClient = new ImmichClient();

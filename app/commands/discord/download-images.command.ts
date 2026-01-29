@@ -17,7 +17,7 @@ import { ChannelType, Client, GatewayIntentBits, type Message, type TextChannel 
 import path from 'path';
 import * as readline from 'readline';
 import { downloadFileCustom } from '../../../app/helpers/media/utils/fileUtils';
-import { immichClient } from '../../../core/immich/immich-client';
+import { ImmichClient } from '../../../core/immich/immich-client';
 
 const BATCH_SIZE = 100;
 const RATE_LIMIT_DELAY = 1000;
@@ -56,6 +56,7 @@ export default class DownloadImagesCommand extends Command {
 
   private tempDir: string | null = null;
   private rl?: readline.Interface;
+  private immichClient?: ImmichClient;
 
   async handle(): Promise<number> {
     const interactive = this.option('interactive') as boolean;
@@ -116,7 +117,8 @@ export default class DownloadImagesCommand extends Command {
         this.info(`Album: ${albumName}`);
         this.info(`Archive uploads: ${noArchive ? 'No (visible in timeline)' : 'Yes (hidden from timeline)'}`);
 
-        if (!immichClient.isReady()) {
+        this.immichClient = new ImmichClient();
+        if (!this.immichClient.isReady()) {
           this.error('Immich is not enabled or configured');
           return 1;
         }
@@ -361,7 +363,7 @@ export default class DownloadImagesCommand extends Command {
 
       const description = this.buildDescription(message, guildName);
 
-      const result = await immichClient.uploadAsset(
+      const result = await this.immichClient!.uploadAsset(
         tempPath,
         message.createdAt,
         description,
@@ -370,9 +372,9 @@ export default class DownloadImagesCommand extends Command {
 
       if (result && albumName) {
         const channelName = (message.channel as TextChannel).name;
-        const albumId = await immichClient.ensureAlbum(albumName, `Images from #${channelName} in ${guildName}`);
+        const albumId = await this.immichClient!.ensureAlbum(albumName, `Images from #${channelName} in ${guildName}`);
         if (albumId) {
-          await immichClient.addAssetToAlbum(albumId, result.id);
+          await this.immichClient!.addAssetToAlbum(albumId, result.id);
         }
       }
 

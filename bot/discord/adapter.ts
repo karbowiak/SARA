@@ -33,6 +33,7 @@ import {
   type Message,
   type MessageActionRowComponentBuilder,
   MessageFlags,
+  Partials,
   type StringSelectMenuInteraction,
   type User,
 } from 'discord.js';
@@ -80,6 +81,7 @@ export class DiscordAdapter {
         GatewayIntentBits.DirectMessages,
         GatewayIntentBits.GuildMembers,
       ],
+      partials: [Partials.Channel, Partials.Message],
     });
 
     this.setupIncomingEvents();

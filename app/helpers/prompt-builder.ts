@@ -20,6 +20,7 @@ import {
   getProfile,
   getRecentMessages,
   getUserByPlatformId,
+  isGlobalMemoryEnabled,
   type KnowledgeWithScore,
   type SimilarMessage,
   searchKnowledgeByEmbedding,
@@ -110,14 +111,24 @@ export async function buildFullSystemPrompt(
   };
 
   // Resolve user once for both profile and memories
-  const user = context.guildId && context.userId ? getUserByPlatformId(context.platform, context.userId) : null;
+  // User can be resolved even without guildId (for DM/global context)
+  const user = context.userId ? getUserByPlatformId(context.platform, context.userId) : null;
+
+  // Check if user has global memory scope enabled (needed for DM support)
+  const useGlobalScope = user ? isGlobalMemoryEnabled(user.id) : false;
+
+  // Determine effective guildId for lookups:
+  // - If user has global scope enabled, use null (queries global memories/profile)
+  // - Otherwise, use the actual guildId (which may be undefined in DMs)
+  const effectiveGuildId = useGlobalScope ? null : (context.guildId ?? null);
 
   // 1. Load user profile (before memories for better context ordering)
-  if (context.guildId && user) {
+  // Load profile if: we have a guildId, OR user has global scope enabled
+  if ((context.guildId || useGlobalScope) && user) {
     try {
-      const optedOut = getOptOutStatus(user.id, context.guildId);
+      const optedOut = getOptOutStatus(user.id, effectiveGuildId);
       if (!optedOut) {
-        const profile = getProfile(user.id, context.guildId);
+        const profile = getProfile(user.id, effectiveGuildId);
         if (profile) {
           const formattedProfile = formatProfileForPrompt(profile, context.userName ?? 'User');
           if (formattedProfile) {
@@ -132,11 +143,12 @@ export async function buildFullSystemPrompt(
   }
 
   // 2. Load user memories
-  if (!context.skipMemories && context.guildId && user) {
+  // Load memories if: we have a guildId, OR user has global scope enabled
+  if (!context.skipMemories && (context.guildId || useGlobalScope) && user) {
     try {
       const memories = await getMemoriesForPrompt({
         userId: user.id,
-        guildId: context.guildId,
+        guildId: effectiveGuildId,
         currentMessage: context.messageContent,
         limit: 10,
       });

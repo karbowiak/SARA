@@ -17,11 +17,13 @@ import type {
 import { registerCommand, unregisterCommand } from '@core';
 import { getBotConfig } from '@core/config';
 import {
+  clearGlobalMemories,
   clearMemories,
   deleteMemory,
   getMemories,
   getMemoryCount,
   getUserByPlatformId,
+  isGlobalMemoryEnabled,
   type Memory,
   type MemoryType,
   saveMemory,
@@ -98,15 +100,6 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
 
     const { guildId, platform, user, subcommand, args } = invocation;
 
-    // Must be in a guild
-    if (!guildId) {
-      await invocation.reply({
-        content: '❌ This command can only be used in a server, not DMs.',
-        ephemeral: true,
-      });
-      return;
-    }
-
     // Get user's internal ID
     const dbUser = getUserByPlatformId(platform, user.id);
     if (!dbUser) {
@@ -117,20 +110,24 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
       return;
     }
 
+    // Determine scope based on user setting
+    const isGlobal = isGlobalMemoryEnabled(dbUser.id);
+    const scope = isGlobal ? 'global' : (guildId ?? 'dm');
+
     switch (subcommand) {
       case 'add':
-        await this.handleAdd(invocation, dbUser.id, guildId);
+        await this.handleAdd(invocation, dbUser.id, scope, isGlobal);
         break;
       case 'list':
-        await this.handleList(invocation, dbUser.id, guildId, (args.type as MemoryType) ?? null);
+        await this.handleList(invocation, dbUser.id, scope, isGlobal, (args.type as MemoryType) ?? null);
         break;
       case 'delete': {
         const memoryId = (args.memory as string) ?? '';
-        await this.handleDelete(invocation, dbUser.id, guildId, memoryId);
+        await this.handleDelete(invocation, dbUser.id, scope, memoryId);
         break;
       }
       case 'clear':
-        await this.handleClear(invocation, dbUser.id, guildId);
+        await this.handleClear(invocation, dbUser.id, scope, isGlobal);
         break;
       default:
         await invocation.reply({
@@ -145,10 +142,6 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
     if (request.focusedOption.name !== 'memory') return;
 
     const { platform, user, guildId } = request;
-    if (!guildId) {
-      await request.respond([]);
-      return;
-    }
 
     const dbUser = getUserByPlatformId(platform, user.id);
     if (!dbUser) {
@@ -156,16 +149,23 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
       return;
     }
 
-    const memories = getMemories(dbUser.id, guildId);
+    // Get memories based on user's scope setting
+    const isGlobal = isGlobalMemoryEnabled(dbUser.id);
+    const scope = isGlobal ? null : (guildId ?? 'dm'); // null for global fetches all global + guild memories
+
+    const memories = getMemories(dbUser.id, scope);
     const search = request.focusedOption.value.toLowerCase();
 
     const matches = memories
       .filter((m) => m.content.toLowerCase().includes(search) || m.id.toString().includes(search))
       .slice(0, 25)
-      .map((m) => ({
-        name: `${TYPE_ICONS[m.type]} #${m.id}: ${m.content.slice(0, 80)}${m.content.length > 80 ? '...' : ''}`,
-        value: m.id.toString(),
-      }));
+      .map((m) => {
+        const scopeIcon = m.is_global ? '🌐' : '🏠';
+        return {
+          name: `${scopeIcon} ${TYPE_ICONS[m.type]} #${m.id}: ${m.content.slice(0, 70)}${m.content.length > 70 ? '...' : ''}`,
+          value: m.id.toString(),
+        };
+      });
 
     await request.respond(matches);
   }
@@ -197,9 +197,14 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
     });
   }
 
-  private async handleAdd(invocation: CommandInvocation, userId: number, guildId: string): Promise<void> {
+  private async handleAdd(
+    invocation: CommandInvocation,
+    userId: number,
+    scope: string,
+    isGlobal: boolean,
+  ): Promise<void> {
     // Check memory limit before showing modal
-    const { explicit } = getMemoryCount(userId, guildId);
+    const { explicit } = getMemoryCount(userId, isGlobal ? null : scope);
     if (explicit >= 100) {
       await invocation.reply({
         content: '❌ You have reached the maximum of 100 explicit memories. Use `/memory delete` to remove some first.',
@@ -210,7 +215,7 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
 
     // Show modal for memory entry
     await invocation.showModal({
-      customId: 'memory_add_modal',
+      customId: `memory_add_modal_${isGlobal ? 'global' : scope}`,
       title: 'Add Memory',
       fields: [
         {
@@ -235,16 +240,12 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
   }
 
   private handleModalSubmit = async (interaction: ModalSubmitInteraction): Promise<void> => {
-    if (interaction.customId !== 'memory_add_modal') return;
+    if (!interaction.customId.startsWith('memory_add_modal')) return;
 
-    const guildId = interaction.guildId;
-    if (!guildId) {
-      await interaction.reply({
-        content: '❌ This can only be used in a server.',
-        ephemeral: true,
-      });
-      return;
-    }
+    // Extract scope from customId: memory_add_modal_<scope> or memory_add_modal_global
+    const scopePart = interaction.customId.replace('memory_add_modal_', '');
+    const isGlobal = scopePart === 'global';
+    const scope = isGlobal ? 'global' : scopePart;
 
     const dbUser = getUserByPlatformId('discord', interaction.user.id);
     if (!dbUser) {
@@ -296,15 +297,17 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
     try {
       const result = await saveMemory({
         userId: dbUser.id,
-        guildId,
+        guildId: scope,
         type,
         content: finalContent,
         source: 'explicit',
+        isGlobal,
       });
 
+      const scopeLabel = isGlobal ? '🌐 Global' : '🏠 This server';
       let response = result.updated
         ? `🔄 **Memory updated!** (similar memory existed)\n\n`
-        : `✅ **Memory saved!**\n\n`;
+        : `✅ **Memory saved!** (${scopeLabel})\n\n`;
 
       response += `${TYPE_ICONS[type]} **${TYPE_NAMES[type]}**\n`;
       response += `${finalContent}\n`;
@@ -318,8 +321,9 @@ export class MemorySlashPlugin implements CommandHandlerPlugin {
 
       this.context.logger.info('[Memory] Added via modal', {
         userId: dbUser.id,
-        guildId,
+        scope,
         type,
+        isGlobal,
         interpreted: wasInterpreted,
       });
     } catch (error) {
@@ -381,18 +385,20 @@ User's name: ${username}`,
   private async handleList(
     invocation: CommandInvocation,
     userId: number,
-    guildId: string,
+    scope: string,
+    isGlobal: boolean,
     typeFilter: MemoryType | null,
   ): Promise<void> {
-    const memories = getMemories(userId, guildId);
+    const memories = getMemories(userId, isGlobal ? null : scope);
 
     // Filter by type if specified
     const filtered = typeFilter ? memories.filter((m) => m.type === typeFilter) : memories;
 
     if (filtered.length === 0) {
       const filterText = typeFilter ? ` of type "${typeFilter}"` : '';
+      const scopeText = isGlobal ? '' : ' in this context';
       await invocation.reply({
-        content: `📭 You have no memories${filterText} stored in this server.\n\nTo create memories, just tell me things like "Remember that I prefer dark mode" or "My timezone is EST".`,
+        content: `📭 You have no memories${filterText}${scopeText}.\n\nTo create memories, just tell me things like "Remember that I prefer dark mode" or "My timezone is EST".`,
         ephemeral: true,
       });
       return;
@@ -405,7 +411,7 @@ User's name: ${username}`,
       typeFilter,
     });
 
-    const { content, components } = this.buildListResponse(filtered, 0, typeFilter);
+    const { content, components } = this.buildListResponse(filtered, 0, typeFilter, isGlobal);
 
     await invocation.reply({
       content,
@@ -418,6 +424,7 @@ User's name: ${username}`,
     memories: Memory[],
     page: number,
     typeFilter: MemoryType | null,
+    isGlobal?: boolean,
   ): { content: string; components: BotButton[][] } {
     const totalPages = Math.ceil(memories.length / ITEMS_PER_PAGE);
     const start = page * ITEMS_PER_PAGE;
@@ -440,12 +447,13 @@ User's name: ${username}`,
 
       for (const memory of typeMemories) {
         const source = memory.source === 'explicit' ? '✅' : '🔄';
-        content += `${source} \`#${memory.id}\` ${memory.content}\n`;
+        const scopeIcon = memory.is_global ? '🌐' : '🏠';
+        content += `${scopeIcon} ${source} \`#${memory.id}\` ${memory.content}\n`;
       }
       content += '\n';
     }
 
-    content += `_Page ${page + 1}/${totalPages} • ✅ explicit | 🔄 inferred_`;
+    content += `_Page ${page + 1}/${totalPages} • 🌐 global | 🏠 server • ✅ explicit | 🔄 inferred_`;
 
     // Build pagination buttons
     const buttons: BotButton[] = [];
@@ -477,7 +485,7 @@ User's name: ${username}`,
   private async handleDelete(
     invocation: CommandInvocation,
     userId: number,
-    guildId: string,
+    scope: string,
     memoryIdStr: string,
   ): Promise<void> {
     const memoryId = parseInt(memoryIdStr, 10);
@@ -490,13 +498,13 @@ User's name: ${username}`,
       return;
     }
 
-    // Verify this memory belongs to the user in this guild
-    const memories = getMemories(userId, guildId);
+    // Verify this memory belongs to the user (check both global and scope-specific)
+    const memories = getMemories(userId, scope === 'global' ? null : scope);
     const memory = memories.find((m) => m.id === memoryId);
 
     if (!memory) {
       await invocation.reply({
-        content: `❌ Memory #${memoryId} not found, or it doesn't belong to you in this server.`,
+        content: `❌ Memory #${memoryId} not found, or it doesn't belong to you.`,
         ephemeral: true,
       });
       return;
@@ -505,14 +513,15 @@ User's name: ${username}`,
     const deleted = deleteMemory(memoryId);
 
     if (deleted) {
+      const scopeLabel = memory.is_global ? '🌐 Global' : '🏠 Server';
       this.context.logger.info('User deleted memory via slash command', {
         userId,
-        guildId,
+        scope,
         memoryId,
       });
 
       await invocation.reply({
-        content: `✅ **Memory deleted!**\n\n${TYPE_ICONS[memory.type]} ~~${memory.content}~~\n\n_I'll no longer remember this._`,
+        content: `✅ **Memory deleted!** (${scopeLabel})\n\n${TYPE_ICONS[memory.type]} ~~${memory.content}~~\n\n_I'll no longer remember this._`,
         ephemeral: true,
       });
     } else {
@@ -523,27 +532,44 @@ User's name: ${username}`,
     }
   }
 
-  private async handleClear(invocation: CommandInvocation, userId: number, guildId: string): Promise<void> {
-    const memories = getMemories(userId, guildId);
+  private async handleClear(
+    invocation: CommandInvocation,
+    userId: number,
+    scope: string,
+    isGlobal: boolean,
+  ): Promise<void> {
+    const memories = getMemories(userId, isGlobal ? null : scope);
 
     if (memories.length === 0) {
+      const scopeText = isGlobal ? '' : ' in this context';
       await invocation.reply({
-        content: '📭 You have no memories to clear in this server.',
+        content: `📭 You have no memories to clear${scopeText}.`,
         ephemeral: true,
       });
       return;
     }
 
-    const count = clearMemories(userId, guildId);
+    // Clear based on scope
+    let count: number;
+    let scopeLabel: string;
 
-    this.context.logger.info('User cleared all memories via slash command', {
+    if (isGlobal) {
+      count = clearGlobalMemories(userId);
+      scopeLabel = 'globally';
+    } else {
+      count = clearMemories(userId, scope);
+      scopeLabel = scope === 'dm' ? 'from DMs' : 'from this server';
+    }
+
+    this.context.logger.info('User cleared memories via slash command', {
       userId,
-      guildId,
+      scope,
+      isGlobal,
       clearedCount: count,
     });
 
     await invocation.reply({
-      content: `🗑️ **All memories cleared!**\n\nRemoved **${count}** ${count === 1 ? 'memory' : 'memories'} from this server.\n\n_Starting fresh — I won't remember anything about you until you tell me again._`,
+      content: `🗑️ **Memories cleared ${scopeLabel}!**\n\nRemoved **${count}** ${count === 1 ? 'memory' : 'memories'}.\n\n_Starting fresh — I won't remember this data until you tell me again._`,
       ephemeral: true,
     });
   }

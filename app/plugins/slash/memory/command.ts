@@ -10,7 +10,6 @@ import type { SlashCommandDefinition } from '@core';
 export const memoryCommand: SlashCommandDefinition = {
   name: 'memory',
   description: 'View and manage what the bot remembers about you',
-  guildOnly: true,
   subcommands: [
     {
       name: 'add',

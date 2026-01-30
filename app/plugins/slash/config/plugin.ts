@@ -29,11 +29,14 @@ import {
   deleteUserApiKey,
   getAllUserSettings,
   getUserByPlatformId,
+  getUserMemoryScope,
   getUserWebhooks,
+  type MemoryScope,
   removeUserWebhook,
   setUserApiKey,
   setUserDefaultModel,
   setUserImageModels,
+  setUserMemoryScope,
   type WebhookConfig,
 } from '@core/database';
 import { configCommand } from './command';
@@ -72,16 +75,7 @@ export class ConfigCommandPlugin implements CommandHandlerPlugin {
   private async handleCommand(invocation: CommandInvocation): Promise<void> {
     if (invocation.commandName !== 'config') return;
 
-    const { guildId, platform, user, subcommand, subcommandGroup } = invocation;
-
-    // Must be in a guild
-    if (!guildId) {
-      await invocation.reply({
-        content: '❌ This command can only be used in a server, not DMs.',
-        ephemeral: true,
-      });
-      return;
-    }
+    const { platform, user, subcommand, subcommandGroup } = invocation;
 
     // Get user's internal ID
     const dbUser = getUserByPlatformId(platform, user.id);
@@ -134,6 +128,9 @@ export class ConfigCommandPlugin implements CommandHandlerPlugin {
       case 'imagemodels':
         await this.handleImageModels(invocation);
         break;
+      case 'scope':
+        await this.handleScope(invocation, dbUser.id);
+        break;
       case 'reset':
         await this.handleReset(invocation, dbUser.id);
         break;
@@ -155,6 +152,7 @@ export class ConfigCommandPlugin implements CommandHandlerPlugin {
   private async handleView(invocation: CommandInvocation, userId: number): Promise<void> {
     const settings = getAllUserSettings(userId);
     const webhooks = (settings.image_webhooks as WebhookConfig[]) ?? [];
+    const memoryScope = getUserMemoryScope(userId);
 
     const embed: BotEmbed = {
       title: '⚙️ Your Bot Settings',
@@ -168,6 +166,11 @@ export class ConfigCommandPlugin implements CommandHandlerPlugin {
         {
           name: '💬 Chat Model',
           value: (settings.default_chat_model as string) || 'Not configured',
+          inline: true,
+        },
+        {
+          name: '📦 Memory Scope',
+          value: memoryScope === 'global' ? '🌐 Global (shared everywhere)' : '🏠 Per-server (default)',
           inline: true,
         },
         {
@@ -284,6 +287,38 @@ export class ConfigCommandPlugin implements CommandHandlerPlugin {
         },
       ],
     });
+  }
+
+  /**
+   * /config scope - Set memory/profile scope (per-server or global)
+   */
+  private async handleScope(invocation: CommandInvocation, userId: number): Promise<void> {
+    const mode = invocation.args.mode as MemoryScope;
+    const currentScope = getUserMemoryScope(userId);
+
+    if (mode === currentScope) {
+      const modeLabel = mode === 'global' ? '🌐 Global' : '🏠 Per-server';
+      await invocation.reply({
+        content: `📦 Your memory scope is already set to **${modeLabel}**.`,
+        ephemeral: true,
+      });
+      return;
+    }
+
+    setUserMemoryScope(userId, mode);
+
+    const newModeLabel = mode === 'global' ? '🌐 Global' : '🏠 Per-server';
+    const description =
+      mode === 'global'
+        ? 'New memories and profile data will be shared across all servers and DMs.'
+        : 'New memories and profile data will be stored separately for each server.';
+
+    await invocation.reply({
+      content: `✅ Memory scope changed to **${newModeLabel}**!\n\n${description}\n\n💡 **Tip:** Use \`/migrate\` in a server to move existing data to global or another server.`,
+      ephemeral: true,
+    });
+
+    this.context?.logger.info('[Config] Memory scope changed', { userId, scope: mode });
   }
 
   /**
@@ -588,15 +623,6 @@ export class ConfigCommandPlugin implements CommandHandlerPlugin {
 
   private async handleModal(interaction: ModalSubmitInteraction): Promise<void> {
     if (!interaction.customId.startsWith('config_')) return;
-
-    const guildId = interaction.guildId;
-    if (!guildId) {
-      await interaction.reply({
-        content: '❌ This can only be used in a server.',
-        ephemeral: true,
-      });
-      return;
-    }
 
     const dbUser = getUserByPlatformId('discord', interaction.user.id);
     if (!dbUser) {

@@ -7,13 +7,14 @@
 
 import { type BotConfig, createOpenRouterClient, getBotConfig, loadBotConfig } from '@core';
 import {
+  deleteGlobalInferredMemories,
   deleteInferredMemories,
   deleteMemoriesByType,
   formatMemoriesForPrompt,
   formatMessagesForProfile,
   getMemories,
   getMessagesForProfile,
-  getProfile,
+  getProfileByScope,
   type StoredMemory,
   type StoredProfile,
   upsertProfile,
@@ -26,7 +27,7 @@ import {
 export interface GenerateProfileParams {
   /** Internal user ID (from users table) */
   userId: number;
-  /** Guild ID where profile is being generated */
+  /** Guild ID where profile is being generated (or 'dm' for DMs, 'global' for global) */
   guildId: string;
   /** Display name for formatting in prompts */
   userName: string;
@@ -36,6 +37,8 @@ export interface GenerateProfileParams {
   maxMessages?: number;
   /** If true, return prompt without calling LLM or saving */
   dryRun?: boolean;
+  /** If true, create a global profile instead of guild-specific */
+  isGlobal?: boolean;
 }
 
 export interface GenerateProfileResult {
@@ -76,7 +79,7 @@ const MIN_MESSAGES_REQUIRED = 5;
  * @returns Result with success status, profile data, and optional debug info
  */
 export async function generateProfile(params: GenerateProfileParams): Promise<GenerateProfileResult> {
-  const { userId, guildId, userName, dryRun = false } = params;
+  const { userId, guildId, userName, dryRun = false, isGlobal = false } = params;
 
   // Load config
   let config: BotConfig;
@@ -89,8 +92,8 @@ export async function generateProfile(params: GenerateProfileParams): Promise<Ge
 
   const profileConfig = config.profile ?? {};
 
-  // Check if existing profile exists
-  const existingProfile = getProfile(userId, guildId);
+  // Check if existing profile exists (in the appropriate scope)
+  const existingProfile = getProfileByScope(userId, isGlobal ? null : guildId, isGlobal);
   const isNewProfile = !existingProfile || !existingProfile.last_generated_at;
 
   // Determine settings based on new vs existing profile
@@ -110,14 +113,21 @@ export async function generateProfile(params: GenerateProfileParams): Promise<Ge
   const daysInMs = days * 24 * 60 * 60 * 1000;
   const afterTimestamp = Date.now() - daysInMs;
 
-  // Gather data
-  const memories = getMemories(userId, guildId);
-  const messages = getMessagesForProfile({
-    userId,
-    guildId,
-    afterTimestamp,
-    limit: maxMessages,
-  });
+  // Gather data - for global profiles, pass null to get global memories
+  const memories = getMemories(userId, isGlobal ? null : guildId);
+
+  // For messages, we need a specific guild context even for global profiles
+  // If guildId is 'global' or 'dm', we won't have messages to analyze
+  // For now, global profiles are best generated from a guild context
+  const messages =
+    guildId && guildId !== 'global' && guildId !== 'dm'
+      ? getMessagesForProfile({
+          userId,
+          guildId,
+          afterTimestamp,
+          limit: maxMessages,
+        })
+      : [];
 
   // Check minimum messages
   if (messages.length < MIN_MESSAGES_REQUIRED) {
@@ -160,7 +170,7 @@ export async function generateProfile(params: GenerateProfileParams): Promise<Ge
     };
   }
 
-  // Save profile
+  // Save profile with the appropriate scope
   const updatedProfile = upsertProfile({
     userId,
     guildId,
@@ -169,14 +179,24 @@ export async function generateProfile(params: GenerateProfileParams): Promise<Ge
     interests: llmResponse.interests ?? null,
     facts: llmResponse.facts ?? null,
     messagesAnalyzed: messages.length,
+    isGlobal,
   });
 
   // Clean up memories that have been incorporated into the profile
-  const inferredDeleted = deleteInferredMemories(userId, guildId);
-  const profileUpdatesDeleted = deleteMemoriesByType(userId, guildId, 'profile_update');
+  let inferredDeleted: number;
+  let profileUpdatesDeleted: number;
+
+  if (isGlobal) {
+    inferredDeleted = deleteGlobalInferredMemories(userId);
+    // For global, we don't delete guild-specific profile updates
+    profileUpdatesDeleted = 0;
+  } else {
+    inferredDeleted = deleteInferredMemories(userId, guildId);
+    profileUpdatesDeleted = deleteMemoriesByType(userId, guildId, 'profile_update');
+  }
 
   console.log(
-    `[Profile] Cleaned up ${inferredDeleted} inferred + ${profileUpdatesDeleted} profile_update memories for user ${userId} in guild ${guildId}`,
+    `[Profile] Cleaned up ${inferredDeleted} inferred + ${profileUpdatesDeleted} profile_update memories for user ${userId} (isGlobal: ${isGlobal})`,
   );
 
   return {

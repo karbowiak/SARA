@@ -2,7 +2,7 @@
  * /config command definition
  *
  * Allows users to manage their personal bot settings
- * Subcommands: view, apikey, clearapikey, chatmodel, imagemodels, reset
+ * Subcommands: view, apikey, clearapikey, chatmodel, imagemodels, scope, reset
  * Subcommand group: webhook (add, list, remove, test)
  */
 
@@ -11,7 +11,6 @@ import type { SlashCommandDefinition } from '@core';
 export const configCommand: SlashCommandDefinition = {
   name: 'config',
   description: 'Manage your personal bot settings',
-  guildOnly: true,
   subcommands: [
     {
       name: 'view',
@@ -32,6 +31,22 @@ export const configCommand: SlashCommandDefinition = {
     {
       name: 'imagemodels',
       description: 'Set your preferred image generation models',
+    },
+    {
+      name: 'scope',
+      description: 'Set memory/profile scope (per-server or global)',
+      options: [
+        {
+          name: 'mode',
+          description: 'Scope mode for new memories and profiles',
+          type: 'string',
+          required: true,
+          choices: [
+            { name: 'Per-server (default) - separate for each server', value: 'guild' },
+            { name: 'Global - shared across all servers and DMs', value: 'global' },
+          ],
+        },
+      ],
     },
     {
       name: 'reset',

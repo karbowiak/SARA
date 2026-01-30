@@ -4,7 +4,14 @@
 
 import { getDb } from './client';
 
-export type UserSettingKey = 'openrouter_api_key' | 'default_chat_model' | 'image_models' | 'image_webhooks';
+export type UserSettingKey =
+  | 'openrouter_api_key'
+  | 'default_chat_model'
+  | 'image_models'
+  | 'image_webhooks'
+  | 'memory_scope';
+
+export type MemoryScope = 'guild' | 'global';
 
 export type WebhookType = 'discord' | 'generic';
 
@@ -249,4 +256,30 @@ export function clearAllUserSettings(userId: number): void {
     DELETE FROM user_settings
     WHERE user_id = ?
   `).run(userId);
+}
+
+// =============================================================================
+// Typed Helper Functions - Memory Scope
+// =============================================================================
+
+/**
+ * Get user's memory/profile scope setting
+ * Returns 'guild' (default) or 'global'
+ */
+export function getUserMemoryScope(userId: number): MemoryScope {
+  return getUserSetting<MemoryScope>(userId, 'memory_scope') ?? 'guild';
+}
+
+/**
+ * Set user's memory/profile scope setting
+ */
+export function setUserMemoryScope(userId: number, scope: MemoryScope): void {
+  setUserSetting(userId, 'memory_scope', scope);
+}
+
+/**
+ * Check if user has global memory scope enabled
+ */
+export function isGlobalMemoryEnabled(userId: number): boolean {
+  return getUserMemoryScope(userId) === 'global';
 }

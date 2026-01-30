@@ -8,7 +8,15 @@
 import { generateProfile } from '@app/services/profile-generator';
 import type { BotEmbed, CommandHandlerPlugin, CommandInvocation, ModalSubmitInteraction, PluginContext } from '@core';
 import { registerCommand, unregisterCommand } from '@core';
-import { canGenerateProfile, getProfile, getUserByPlatformId, setOptOut, upsertProfile } from '@core/database';
+import {
+  canGenerateProfile,
+  getProfile,
+  getProfileByScope,
+  getUserByPlatformId,
+  isGlobalMemoryEnabled,
+  setOptOut,
+  upsertProfile,
+} from '@core/database';
 import { profileCommand } from './command';
 
 export class ProfileCommandPlugin implements CommandHandlerPlugin {
@@ -38,15 +46,6 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
 
     const { guildId, platform, user, subcommand } = invocation;
 
-    // Must be in a guild
-    if (!guildId) {
-      await invocation.reply({
-        content: '❌ This command can only be used in a server, not DMs.',
-        ephemeral: true,
-      });
-      return;
-    }
-
     // Get user's internal ID
     const dbUser = getUserByPlatformId(platform, user.id);
     if (!dbUser) {
@@ -57,21 +56,25 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
       return;
     }
 
+    // Determine scope based on user setting
+    const isGlobal = isGlobalMemoryEnabled(dbUser.id);
+    const scope = isGlobal ? 'global' : (guildId ?? 'dm');
+
     switch (subcommand) {
       case 'view':
-        await this.handleView(invocation, dbUser.id, guildId, user.displayName ?? user.name);
+        await this.handleView(invocation, dbUser.id, scope, isGlobal, user.displayName ?? user.name);
         break;
       case 'generate':
-        await this.handleGenerate(invocation, dbUser.id, guildId, user.displayName ?? user.name);
+        await this.handleGenerate(invocation, dbUser.id, scope, isGlobal, user.displayName ?? user.name);
         break;
       case 'edit':
-        await this.handleCorrect(invocation, dbUser.id, guildId);
+        await this.handleCorrect(invocation, dbUser.id, scope, isGlobal);
         break;
       case 'optout':
-        await this.handleOptOut(invocation, dbUser.id, guildId);
+        await this.handleOptOut(invocation, dbUser.id, scope, isGlobal);
         break;
       case 'optin':
-        await this.handleOptIn(invocation, dbUser.id, guildId);
+        await this.handleOptIn(invocation, dbUser.id, scope, isGlobal);
         break;
       default:
         await invocation.reply({
@@ -87,10 +90,11 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
   private async handleView(
     invocation: CommandInvocation,
     userId: number,
-    guildId: string,
+    scope: string,
+    isGlobal: boolean,
     userName: string,
   ): Promise<void> {
-    const profile = getProfile(userId, guildId);
+    const profile = getProfileByScope(userId, isGlobal ? null : scope, isGlobal);
 
     if (!profile || !profile.last_generated_at) {
       await invocation.reply({
@@ -100,7 +104,7 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
       return;
     }
 
-    const embed = this.buildProfileEmbed(profile, userName);
+    const embed = this.buildProfileEmbed(profile, userName, isGlobal);
 
     await invocation.reply({
       embeds: [embed],
@@ -114,11 +118,12 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
   private async handleGenerate(
     invocation: CommandInvocation,
     userId: number,
-    guildId: string,
+    scope: string,
+    isGlobal: boolean,
     userName: string,
   ): Promise<void> {
     // Check rate limit
-    const { canGenerate, nextAvailable } = canGenerateProfile(userId, guildId);
+    const { canGenerate, nextAvailable } = canGenerateProfile(userId, isGlobal ? null : scope, isGlobal);
 
     if (!canGenerate && nextAvailable) {
       const hoursRemaining = Math.ceil((nextAvailable.getTime() - Date.now()) / (1000 * 60 * 60));
@@ -135,8 +140,9 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
     try {
       const result = await generateProfile({
         userId,
-        guildId,
+        guildId: scope,
         userName,
+        isGlobal,
       });
 
       if (!result.success) {
@@ -155,17 +161,19 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
         return;
       }
 
-      const embed = this.buildProfileEmbed(result.profile, userName);
+      const embed = this.buildProfileEmbed(result.profile, userName, isGlobal);
+      const scopeLabel = isGlobal ? '🌐 Global' : '🏠 Server';
 
       await invocation.followUp({
-        content: `✅ **Profile generated!** Analyzed ${result.messagesAnalyzed ?? 0} messages.`,
+        content: `✅ **Profile generated!** (${scopeLabel}) Analyzed ${result.messagesAnalyzed ?? 0} messages.`,
         embeds: [embed],
         ephemeral: true,
       });
 
       this.context?.logger.info('[Profile] Generated profile via slash command', {
         userId,
-        guildId,
+        scope,
+        isGlobal,
         messagesAnalyzed: result.messagesAnalyzed,
       });
     } catch (error) {
@@ -180,11 +188,16 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
   /**
    * Handle /profile edit - opens modal for editing
    */
-  private async handleCorrect(invocation: CommandInvocation, userId: number, guildId: string): Promise<void> {
-    const profile = getProfile(userId, guildId);
+  private async handleCorrect(
+    invocation: CommandInvocation,
+    userId: number,
+    scope: string,
+    isGlobal: boolean,
+  ): Promise<void> {
+    const profile = getProfileByScope(userId, isGlobal ? null : scope, isGlobal);
 
     await invocation.showModal({
-      customId: 'profile_edit_modal',
+      customId: `profile_edit_modal_${isGlobal ? 'global' : scope}`,
       title: 'Edit Your Profile',
       fields: [
         {
@@ -226,45 +239,53 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
   /**
    * Handle /profile optout
    */
-  private async handleOptOut(invocation: CommandInvocation, userId: number, guildId: string): Promise<void> {
-    setOptOut(userId, guildId, true);
+  private async handleOptOut(
+    invocation: CommandInvocation,
+    userId: number,
+    scope: string,
+    isGlobal: boolean,
+  ): Promise<void> {
+    setOptOut(userId, isGlobal ? null : scope, true, isGlobal);
 
+    const scopeLabel = isGlobal ? 'globally' : 'in this context';
     await invocation.reply({
-      content: '🔒 Profile features disabled. Your profile will no longer be used or updated.',
+      content: `🔒 Profile features disabled ${scopeLabel}. Your profile will no longer be used or updated.`,
       ephemeral: true,
     });
 
-    this.context?.logger.info('[Profile] User opted out', { userId, guildId });
+    this.context?.logger.info('[Profile] User opted out', { userId, scope, isGlobal });
   }
 
   /**
    * Handle /profile optin
    */
-  private async handleOptIn(invocation: CommandInvocation, userId: number, guildId: string): Promise<void> {
-    setOptOut(userId, guildId, false);
+  private async handleOptIn(
+    invocation: CommandInvocation,
+    userId: number,
+    scope: string,
+    isGlobal: boolean,
+  ): Promise<void> {
+    setOptOut(userId, isGlobal ? null : scope, false, isGlobal);
 
+    const scopeLabel = isGlobal ? 'globally' : 'in this context';
     await invocation.reply({
-      content: '✅ Profile features re-enabled! Use `/profile generate` to update your profile.',
+      content: `✅ Profile features re-enabled ${scopeLabel}! Use \`/profile generate\` to update your profile.`,
       ephemeral: true,
     });
 
-    this.context?.logger.info('[Profile] User opted in', { userId, guildId });
+    this.context?.logger.info('[Profile] User opted in', { userId, scope, isGlobal });
   }
 
   /**
    * Handle modal submission for profile edit
    */
   private async handleModal(interaction: ModalSubmitInteraction): Promise<void> {
-    if (interaction.customId !== 'profile_edit_modal') return;
+    if (!interaction.customId.startsWith('profile_edit_modal')) return;
 
-    const guildId = interaction.guildId;
-    if (!guildId) {
-      await interaction.reply({
-        content: '❌ This can only be used in a server.',
-        ephemeral: true,
-      });
-      return;
-    }
+    // Extract scope from customId: profile_edit_modal_<scope> or profile_edit_modal_global
+    const scopePart = interaction.customId.replace('profile_edit_modal_', '');
+    const isGlobal = scopePart === 'global';
+    const scope = isGlobal ? 'global' : scopePart;
 
     const dbUser = getUserByPlatformId('discord', interaction.user.id);
     if (!dbUser) {
@@ -283,21 +304,24 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
     try {
       upsertProfile({
         userId: dbUser.id,
-        guildId,
+        guildId: scope,
         summary,
         personality,
         interests,
         facts,
+        isGlobal,
       });
 
+      const scopeLabel = isGlobal ? '🌐 Global' : '🏠 Server';
       await interaction.reply({
-        content: '✅ **Profile updated!** Your edits have been saved.',
+        content: `✅ **Profile updated!** (${scopeLabel}) Your edits have been saved.`,
         ephemeral: true,
       });
 
       this.context?.logger.info('[Profile] User edited profile via modal', {
         userId: dbUser.id,
-        guildId,
+        scope,
+        isGlobal,
       });
     } catch (error) {
       this.context?.logger.error('[Profile] Failed to save profile edits', { error });
@@ -320,6 +344,7 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
       updated_at: number;
     },
     userName: string,
+    isGlobal?: boolean,
   ): BotEmbed {
     const lastUpdatedDate = new Date(profile.updated_at);
     const lastUpdatedString = lastUpdatedDate.toLocaleDateString('en-US', {
@@ -330,8 +355,10 @@ export class ProfileCommandPlugin implements CommandHandlerPlugin {
       minute: '2-digit',
     });
 
+    const scopeLabel = isGlobal ? '🌐 Global' : '🏠 Server';
+
     return {
-      title: `Profile for ${userName}`,
+      title: `${scopeLabel} Profile for ${userName}`,
       color: 0x5865f2, // Discord blurple
       fields: [
         { name: 'Summary', value: profile.summary || '*Not set*', inline: false },

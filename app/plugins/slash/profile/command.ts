@@ -10,7 +10,6 @@ import type { SlashCommandDefinition } from '@core';
 export const profileCommand: SlashCommandDefinition = {
   name: 'profile',
   description: 'Manage your user profile - what Sara knows about you',
-  guildOnly: true,
   subcommands: [
     {
       name: 'view',

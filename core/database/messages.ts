@@ -311,7 +311,7 @@ export interface ProfileMessage {
 
 export interface GetMessagesForProfileParams {
   userId: number;
-  guildId: string;
+  guildId: string | null; // null = fetch from all guilds (global)
   afterTimestamp: number; // Unix timestamp - only get messages after this
   limit: number; // Max messages to return
 }
@@ -319,11 +319,12 @@ export interface GetMessagesForProfileParams {
 /**
  * Get messages for profile generation
  *
- * Retrieves a user's messages in a guild for AI profile analysis.
+ * Retrieves a user's messages for AI profile analysis.
+ * If guildId is null, fetches messages from all guilds (for global profiles).
  * Currently returns messages without reply context since the messages
  * table doesn't have a reply_to_message_id column.
  *
- * @param params - Parameters including userId, guildId, afterTimestamp, and limit
+ * @param params - Parameters including userId, guildId (or null for global), afterTimestamp, and limit
  * @returns Array of ProfileMessage objects ordered by timestamp DESC
  */
 export function getMessagesForProfile(params: GetMessagesForProfileParams): ProfileMessage[] {
@@ -335,28 +336,52 @@ export function getMessagesForProfile(params: GetMessagesForProfileParams): Prof
   // LEFT JOIN messages parent ON m.reply_to_message_id = parent.platform_message_id
   //   AND parent.guild_id = m.guild_id
   // LEFT JOIN users parent_user ON parent.user_id = parent_user.id
-  const rows = db
-    .prepare(
-      `
-    SELECT 
-      m.id,
-      m.channel_id as channelId,
-      m.created_at as createdAt,
-      m.content
-    FROM messages m
-    WHERE m.user_id = ? 
-      AND m.guild_id = ?
-      AND m.created_at > ?
-    ORDER BY m.created_at DESC
-    LIMIT ?
-  `,
-    )
-    .all(userId, guildId, afterTimestamp, limit) as Array<{
+
+  let rows: Array<{
     id: number;
     channelId: string;
     createdAt: number;
     content: string;
   }>;
+
+  if (guildId === null) {
+    // Global: fetch from all guilds
+    rows = db
+      .prepare(
+        `
+      SELECT 
+        m.id,
+        m.channel_id as channelId,
+        m.created_at as createdAt,
+        m.content
+      FROM messages m
+      WHERE m.user_id = ? 
+        AND m.created_at > ?
+      ORDER BY m.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(userId, afterTimestamp, limit) as typeof rows;
+  } else {
+    // Guild-specific: filter by guild
+    rows = db
+      .prepare(
+        `
+      SELECT 
+        m.id,
+        m.channel_id as channelId,
+        m.created_at as createdAt,
+        m.content
+      FROM messages m
+      WHERE m.user_id = ? 
+        AND m.guild_id = ?
+        AND m.created_at > ?
+      ORDER BY m.created_at DESC
+      LIMIT ?
+    `,
+      )
+      .all(userId, guildId, afterTimestamp, limit) as typeof rows;
+  }
 
   // Map to ProfileMessage with null reply context
   return rows.map((row) => ({

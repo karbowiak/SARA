@@ -12,6 +12,7 @@ import {
   deleteMemory,
   getMemories,
   getUserByPlatformId,
+  isGlobalMemoryEnabled,
   type MemoryType,
   saveMemory,
   searchMemories,
@@ -36,6 +37,11 @@ export class MemoryTool implements Tool {
     name: 'memory',
     description: `Manage user memories. You SHOULD proactively use this when users share information worth remembering.
 
+Memory scope:
+- By default, memories are stored per-server
+- Users can enable global memory scope with /config scope global
+- With global scope enabled, memories work in DMs and are shared across all servers
+
 When to AUTO-SAVE (use source="inferred"):
 - User mentions their job, workplace, or profession
 - User shares location, timezone, or hometown
@@ -49,8 +55,8 @@ When to EXPLICITLY REMEMBER (use source="explicit"):
 - Critical information the user explicitly emphasizes
 
 Memory limits:
-- Auto-saved (inferred): Max 100 per user per server, oldest auto-removed when limit reached
-- User-saved (explicit): Max 100 per user per server, user must manage
+- Auto-saved (inferred): Max 100 per user per scope, oldest auto-removed when limit reached
+- User-saved (explicit): Max 100 per user per scope, user must manage
 
 Memory types:
 - "preference": How the user wants to be treated (e.g., "Call me Dave", "Use formal language")
@@ -135,21 +141,27 @@ their profile says "Lives in Copenhagen", save a profile_update memory noting th
     }
 
     const guildId = context.message.guildId;
-    if (!guildId) {
+    const isGlobal = isGlobalMemoryEnabled(user.id);
+
+    // Allow DMs only if user has global memory scope enabled
+    if (!guildId && !isGlobal) {
       return {
         success: false,
         error: {
           type: 'no_guild',
-          message: 'Memories can only be saved in server channels, not DMs.',
+          message: 'Memories in DMs require global memory scope. Enable it with /config scope global',
         },
       };
     }
 
+    // Determine effective guildId: use 'dm' for DM context with global scope
+    const effectiveGuildId = guildId ?? 'dm';
+
     switch (params.action) {
       case 'save':
-        return this.saveMemory(user.id, guildId, params, context);
+        return this.saveMemory(user.id, effectiveGuildId, params, context, isGlobal);
       case 'recall':
-        return this.recallMemory(user.id, guildId, params.content, context);
+        return this.recallMemory(user.id, effectiveGuildId, params.content, context, isGlobal);
       case 'forget':
         return this.forgetMemory(params.memory_id, context);
       case 'update':
@@ -170,6 +182,7 @@ their profile says "Lives in Copenhagen", save a profile_update memory noting th
     guildId: string,
     params: { type?: MemoryType; content?: string; source?: 'explicit' | 'inferred' },
     context: ToolExecutionContext,
+    isGlobal: boolean = false,
   ): Promise<ToolResult> {
     if (!params.type) {
       return {
@@ -198,6 +211,7 @@ their profile says "Lives in Copenhagen", save a profile_update memory noting th
         type: params.type,
         content: params.content,
         source: params.source ?? 'explicit',
+        isGlobal,
       });
 
       context.logger.info('Memory saved', {
@@ -234,13 +248,17 @@ their profile says "Lives in Copenhagen", save a profile_update memory noting th
     guildId: string,
     query: string | undefined,
     _context: ToolExecutionContext,
+    isGlobal: boolean = false,
   ): Promise<ToolResult> {
     try {
+      // For global scope, pass null to get global memories; otherwise use guildId
+      const effectiveGuildId = isGlobal ? null : guildId;
+
       if (query) {
         // Semantic search
         const results = await searchMemories({
           userId,
-          guildId,
+          guildId: effectiveGuildId,
           query,
           limit: 5,
         });
@@ -259,7 +277,7 @@ their profile says "Lives in Copenhagen", save a profile_update memory noting th
         };
       } else {
         // Return all memories
-        const memories = getMemories(userId, guildId);
+        const memories = getMemories(userId, effectiveGuildId);
 
         return {
           success: true,
